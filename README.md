@@ -605,20 +605,4 @@ const USE_MOCKS = false;
 - Компонент: `components/Logo.tsx`
 - Используется в хедере, welcome-странице, login-странице
 
----
-
-## 📞 Контакты
-
-Разработчик: [Ваше имя]  
-Email: [your-email@cdek.digital]  
-GitHub: [your-username]
-
----
-
-## 📄 Лицензия
-
-MIT License - свободно для использования в рамках cdek_digital.
-
----
-
 **Удачи на IT-слёте! 🚀**
