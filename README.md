@@ -1,407 +1,536 @@
-# 🗡️ SQL Battle — Платформа для проведения SQL-баттлов
+# SQL Battle - Платформа для проведения SQL-соревнований
 
-Веб-приложение для проведения интерактивных SQL-соревнований на ИТ-мероприятиях. Участники пишут SQL-запросы в реальном времени, получают мгновенную обратную связь и соревнуются за место в лидерборде.
+Платформа для проведения интерактивных SQL-баттлов на IT-мероприятиях. Разработана для **cdek_digital**.
 
-![SQL Battle](https://img.shields.io/badge/Status-Active-success)
-![Next.js](https://img.shields.io/badge/Next.js-14-black)
-![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)
-![License](https://img.shields.io/badge/License-MIT-green)
+## 🎯 Описание проекта
 
----
+SQL Battle — это веб-приложение для проведения соревнований по написанию SQL-запросов в реальном времени. Участники получают задачи, пишут SQL-запросы, и система автоматически проверяет правильность решений путём сравнения результатов с эталонными.
 
-## 📋 Содержание
-
-- [Возможности](#-возможности)
-- [Технологический стек](#-технологический-стек)
-- [Структура проекта](#-структура-проекта)
-- [Установка и запуск](#-установка-и-запуск)
-- [Интеграция с бэкендом](#-интеграция-с-бэкендом)
-- [Рекомендации по бэкенду](#-рекомендации-по-бэкенду)
-- [Деплой](#-деплой)
-- [Roadmap](#-roadmap)
+### Ключевые особенности
+- ⏱ **Таймер 5 минут** на каждую задачу
+- 🏆 **Лидерборд в реальном времени** (WebSocket)
+- 🐦 **Интерактивная схема БД** с примерами данных
+- ✅ **Проверка через сравнение результатов** (не текста запроса)
+- 👥 **Система назначений** задач участникам
+- 🎨 **Брендинг cdek_digital**
 
 ---
 
-## ✨ Возможности
+## 🏗 Архитектура
 
-### 🎮 Для участников
-- **Арена с редактором SQL** — профессиональный Monaco Editor (как в VS Code) с подсветкой синтаксиса
-- **Мгновенное выполнение** — тестирование запросов с выводом результатов или ошибок
-- **Личный кабинет** — статистика, рейтинг, история решенных задач
-- **Реалтайм лидерборд** — обновление таблицы лидеров в реальном времени (WebSocket)
-- **Адаптивный дизайн** — работа на любых устройствах
-
-### 🛠 Для организаторов (Админка)
-- **Управление задачами** — создание, редактирование, удаление задач
-- **Настройка таймингов** — управление временем начала и длительностью раундов
-- **Мониторинг участников** — просмотр статистики и прогресса
-
----
-
-## 🛠 Технологический стек
-
-### Фронтенд (реализовано ✅)
-
-| Технология | Версия | Назначение |
-|------------|--------|------------|
-| **Next.js** | 14.x | React-фреймворк с App Router |
-| **TypeScript** | 5.x | Строгая типизация |
-| **Tailwind CSS** | 3.x | Utility-first стилизация |
-| **shadcn/ui** | Latest | UI-компоненты на Radix UI |
-| **Monaco Editor** | Latest | Редактор кода из VS Code |
-| **Sonner** | Latest | Всплывающие уведомления |
-| **Lucide React** | Latest | Иконки |
-
-### Бэкенд (рекомендации)
-
-| Технология | Версия | Назначение |
-|------------|--------|------------|
-| **Python** | 3.10+ | Язык программирования |
-| **FastAPI** | 0.100+ | Веб-фреймворк для API |
-| **PostgreSQL** | 14+ | Основная база данных |
-| **SQLAlchemy** | 2.0+ | ORM для работы с БД |
-| **Redis** | 7+ | Кэширование и WebSocket |
-| **Docker** | Latest | Контейнеризация |
+┌─────────────────┐
+│   Frontend      │  Next.js 16 + React + TypeScript
+│   (этот репо)   │  Tailwind CSS + shadcn/ui
+└────────┬────────┘
+         │ HTTP/WebSocket
+         ▼
+┌─────────────────┐
+│   Backend       │  Python + FastAPI
+│   (отдельный    │  PostgreSQL/SQLite
+│    репо)        │  WebSocket для реалтайма
+└─────────────────┘
 
 ---
 
-## 📁 Структура проекта
+## 🔄 User Flow (Поток пользователя)
 
-
-sql-battle/
-├── app/ # Маршруты Next.js (App Router)
-│ ├── (arena)/ # Зона участников
-│ │ ├── battle/page.tsx # Арена (редактор SQL)
-│ │ ├── profile/page.tsx # Личный кабинет
-│ │ └── layout.tsx # Хедер с таймером
-│ ├── admin/ # Зона администраторов
-│ │ ├── tasks/page.tsx # Управление задачами
-│ │ ├── settings/page.tsx # Настройки таймингов
-│ │ └── layout.tsx # Боковое меню
-│ ├── layout.tsx # Корневой layout
-│ └── globals.css # Глобальные стили
-│
-├── components/ # Переиспользуемые компоненты
-│ ├── ui/ # shadcn/ui компоненты
-│ ├── admin/
-│ │ └── TaskFormDialog.tsx # Форма создания задачи
-│ └── SqlEditor.tsx # Обертка Monaco Editor
-│
-├── lib/ # Утилиты
-│ ├── api.ts # API-клиент
-│ ├── auth.ts # Управление JWT
-│ └── mock-data.ts # Мок-данные
-│
-├── .env.local # Переменные окружения
-├── package.json # Зависимости
-└── tailwind.config.ts # Конфигурация Tailwind
-
-
+1. Welcome (/) → Стартовая страница с правилами
+   ↓
+2. Login (/login) → Авторизация/регистрация
+   ↓
+3. Lobby (/lobby) → Ожидание назначения задачи
+   ↓ (админ назначает задачу через /admin/users)
+4. Battle (/battle?taskId=X) → Решение задачи
+   - Таймер запускается автоматически (5 минут)
+   - Пользователь видит схему БД с примерами данных
+   - Пишет SQL-запрос в Monaco Editor
+   - Может выполнить запрос для проверки (Run)
+   - Отправляет решение (Submit)
+   ↓
+5. Результат → Проверка на бэкенде
+   - Если верно: начисление баллов, обновление лидерборда
+   - Если неверно: показ эталонного результата
+   ↓
+6. Возврат в лобби → Ожидание следующей задачи
 
 ---
 
-## 🚀 Установка и запуск
+## 📊 Структура данных
 
-### Требования
-- Node.js 18+ 
-- npm или yarn
+### Таблица `users` (Пользователи)
 
-### Шаги установки
+CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  username VARCHAR(50) UNIQUE NOT NULL,
+  email VARCHAR(100) UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  rating INTEGER DEFAULT 0,
+  total_points INTEGER DEFAULT 0,
+  role VARCHAR(20) DEFAULT 'participant', -- 'participant' или 'admin'
+  created_at TIMESTAMP DEFAULT NOW()
+);
 
-1. **Клонировать репозиторий**
-```bash
-git clone https://github.com/your-repo/sql-battle.git
-cd sql-battle
+### Таблица `tasks` (Задачи)
 
-Установить зависимости
+CREATE TABLE tasks (
+  id SERIAL PRIMARY KEY,
+  title VARCHAR(200) NOT NULL,
+  description TEXT NOT NULL,
+  difficulty VARCHAR(20) NOT NULL, -- 'easy', 'medium', 'hard'
+  points INTEGER NOT NULL,
+  schema TEXT NOT NULL, -- DDL для создания таблиц
+  tables JSONB NOT NULL, -- Структура таблиц с примерами данных
+  expected_result JSONB NOT NULL, -- Эталонный результат
+  created_at TIMESTAMP DEFAULT NOW()
+);
 
-npm install
+**Пример поля `tables`:**
 
-Настроить переменные окружения
-Создай файл .env.local в корне проекта:
+[
+  {
+    "name": "users",
+    "columns": [
+      { "name": "id", "type": "INT" },
+      { "name": "name", "type": "VARCHAR" },
+      { "name": "city", "type": "VARCHAR" }
+    ],
+    "sampleData": [
+      { "id": 1, "name": "Иван Петров", "city": "Москва" },
+      { "id": 2, "name": "Мария Сидорова", "city": "СПб" }
+    ]
+  }
+]
 
-NEXT_PUBLIC_API_URL=http://localhost:8000/api
+**Пример поля `expected_result`:**
 
-Запустить dev-сервер
+[
+  { "city": "Москва", "user_count": 15 },
+  { "city": "СПб", "user_count": 12 }
+]
 
-npm run dev
+### Таблица `submissions` (Попытки решений)
 
-Приложение будет доступно по адресу: http://localhost:3000
-Сборка для продакшена
+CREATE TABLE submissions (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id),
+  task_id INTEGER REFERENCES tasks(id),
+  query TEXT NOT NULL,
+  is_correct BOOLEAN NOT NULL,
+  points_earned INTEGER DEFAULT 0,
+  execution_time_ms INTEGER,
+  created_at TIMESTAMP DEFAULT NOW()
+);
 
-npm run build
-npm start
+### Таблица `task_assignments` (Назначения задач)
 
+CREATE TABLE task_assignments (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) UNIQUE,
+  task_id INTEGER REFERENCES tasks(id),
+  assigned_at TIMESTAMP DEFAULT NOW(),
+  started_at TIMESTAMP,
+  completed_at TIMESTAMP
+);
 
-Интеграция с бэкендом
-Переключение на реальный API
-Открой lib/api.ts
-Найди строку:
+---
 
-const USE_MOCKS = true;
+## 🔌 API-контракт
 
-Поменяй на:
+### Базовый URL
 
-const USE_MOCKS = false;
+http://localhost:8000/api
 
-Перезапусти сервер: npm run dev
+### Аутентификация
 
+Все запросы (кроме `/auth/*`) требуют заголовок:
 
-API-контракт
-Фронтенд ожидает следующие эндпоинты:
-Аутентификация
+Authorization: Bearer <jwt_token>
 
-POST /api/auth/register
-  Body: { "username": "string", "password": "string" }
-  Response: { "token": "string", "user": { "id": 1, "username": "string" } }
+---
 
-POST /api/auth/login
-  Body: { "username": "string", "password": "string" }
-  Response: { "token": "string", "user": { "id": 1, "username": "string" } }
+### 🔐 Аутентификация
 
-GET /api/auth/me
-  Headers: { "Authorization": "Bearer <token>" }
-  Response: { "id": 1, "username": "string", "rating": 1250, "points": 450 }
+#### POST `/auth/register`
+Регистрация нового пользователя.
 
+**Request:**
 
-  Задачи (Арена)
+{
+  "username": "ivan.petrov",
+  "email": "ivan@cdek.digital",
+  "password": "secure_password"
+}
 
-  GET /api/tasks
-  Response: [
-    { "id": 1, "title": "Найди хакеров", "difficulty": "easy", "points": 100 }
-  ]
+**Response (201):**
 
-GET /api/tasks/{id}
-  Response: {
+{
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "user": {
     "id": 1,
-    "title": "Найди хакеров",
-    "description": "Напишите запрос...",
-    "schema": "CREATE TABLE users (...)",
-    "points": 100,
-    "difficulty": "easy"
+    "username": "ivan.petrov",
+    "email": "ivan@cdek.digital",
+    "rating": 0,
+    "total_points": 0,
+    "role": "participant"
   }
+}
 
-POST /api/tasks/{id}/execute
-  Headers: { "Authorization": "Bearer <token>" }
-  Body: { "query": "SELECT * FROM users" }
-  Response: {
-    "status": "success",
-    "data": [{ "id": 1, "name": "Иван" }],
-    "execution_time": 0.12
-  }
-  ИЛИ
-  Response: {
-    "status": "error",
-    "message": "Syntax error near 'SELEC'"
-  }
+#### POST `/auth/login`
+Вход в систему.
 
-POST /api/tasks/{id}/submit
-  Headers: { "Authorization": "Bearer <token>" }
-  Body: { "query": "SELECT * FROM users WHERE status = 'active'" }
-  Response: {
-    "is_correct": true,
-    "points_earned": 100,
-    "new_total_points": 550
-  }
+**Request:**
 
+{
+  "username": "ivan.petrov",
+  "password": "secure_password"
+}
 
-Профиль
+**Response (200):**
 
-GET /api/profile
-  Headers: { "Authorization": "Bearer <token>" }
-  Response: {
+{
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "user": {
     "id": 1,
-    "username": "Иван П.",
+    "username": "ivan.petrov",
+    "email": "ivan@cdek.digital",
     "rating": 1250,
-    "points": 450,
-    "solved_tasks": [1, 3, 5]
+    "total_points": 450,
+    "role": "participant"
   }
+}
 
+---
 
-Админка
+### 👤 Профиль пользователя
 
-GET /api/admin/tasks
-  Response: [
-    { "id": 1, "title": "...", "difficulty": "easy", "points": 100 }
+#### GET `/profile`
+Получить данные текущего пользователя.
+
+**Response (200):**
+
+{
+  "id": 1,
+  "username": "ivan.petrov",
+  "email": "ivan@cdek.digital",
+  "rating": 1250,
+  "total_points": 450,
+  "rank": 3,
+  "solved_tasks": [1, 2, 5],
+  "role": "participant"
+}
+
+---
+
+### 🎮 Задачи
+
+#### GET `/tasks`
+Получить список всех задач (для админки).
+
+**Response (200):**
+
+[
+  {
+    "id": 1,
+    "title": "Найди активных хакеров",
+    "difficulty": "easy",
+    "points": 100,
+    "status": "unsolved"
+  }
+]
+
+#### GET `/tasks/{id}`
+Получить детали задачи.
+
+**Response (200):**
+
+{
+  "id": 3,
+  "title": "Анализ заказов клиентов",
+  "description": "Напишите запрос, который вернёт имя клиента...",
+  "difficulty": "hard",
+  "points": 500,
+  "schema": "CREATE TABLE users (...); CREATE TABLE orders (...);",
+  "tables": [
+    {
+      "name": "users",
+      "columns": [
+        { "name": "id", "type": "INT" },
+        { "name": "name", "type": "VARCHAR" }
+      ],
+      "sampleData": [
+        { "id": 1, "name": "Иван Петров" }
+      ]
+    }
   ]
+}
 
-POST /api/admin/tasks
-  Body: {
-    "title": "string",
-    "description": "string",
-    "schema": "string",
-    "solution": "string",
-    "difficulty": "easy|medium|hard",
-    "points": 100
-  }
+---
 
-PUT /api/admin/tasks/{id}
-  Body: { "title": "new title", ... }
+### ⚡ Выполнение и проверка запросов
 
-DELETE /api/admin/tasks/{id}
+#### POST `/tasks/{id}/execute`
+Выполнить SQL-запрос (кнопка "Run" в интерфейсе).
 
-GET /api/admin/settings
-  Response: {
-    "battle_start": "2025-01-15T10:00:00Z",
-    "round_duration_minutes": 60
-  }
+**Request:**
 
-PUT /api/admin/settings
-  Body: { "battle_start": "...", "round_duration_minutes": 90 }
+{
+  "query": "SELECT name FROM users WHERE status = 'active'"
+}
 
+**Response (200):**
 
-Лидерборд
+{
+  "status": "success",
+  "data": [
+    { "name": "Иван Петров" },
+    { "name": "Мария Сидорова" }
+  ],
+  "execution_time": 0.045
+}
 
-GET /api/leaderboard
-  Response: [
-    { "rank": 1, "username": "Иван П.", "points": 450 },
-    { "rank": 2, "username": "Даня", "points": 400 }
+**Response при ошибке (200):**
+
+{
+  "status": "error",
+  "message": "ERROR: column \"status\" does not exist"
+}
+
+**Важно:**
+- Выполнять в изолированной среде (sandbox)
+- Таймаут: 3 секунды
+- Только SELECT-запросы
+- Запрет: INSERT, UPDATE, DELETE, DROP, ALTER
+
+#### POST `/tasks/{id}/submit`
+Отправить решение на проверку.
+
+**Request:**
+
+{
+  "query": "SELECT name, COUNT(*) FROM users GROUP BY name"
+}
+
+**Response (200):**
+
+{
+  "is_correct": true,
+  "points_earned": 100,
+  "new_total_points": 550,
+  "expected_result": [
+    { "name": "Иван Петров", "count": 1 },
+    { "name": "Мария Сидорова", "count": 1 }
   ]
+}
 
-WebSocket: /ws/leaderboard
-  Отправляет: { "type": "leaderboard_update", "data": [...] }
+**Логика проверки:**
+1. Создать временную БД с тестовыми данными
+2. Выполнить запрос участника
+3. Выполнить эталонный запрос (из `tasks.expected_result`)
+4. Сравнить результаты:
+   - Количество строк должно совпадать
+   - Названия колонок могут отличаться (если использованы алиасы)
+   - Порядок строк не важен
+   - Значения должны совпадать с точностью до типов данных
+5. Если совпало: `is_correct: true`, начислить баллы
+6. Всегда возвращать `expected_result` для отображения пользователю
 
+---
 
+### 🏆 Лидерборд
 
-Рекомендации по бэкенду
-Архитектура
-Рекомендуемая структура FastAPI-проекта:
+#### GET `/leaderboard`
+Получить топ участников.
 
-backend/
-├── app/
-│   ├── main.py                 # Точка входа, настройка CORS
-│   ├── config.py               # Настройки (из .env)
-│   ├── database.py             # Подключение к БД
-│   ├── models/                 # SQLAlchemy модели
-│   │   ├── user.py
-│   │   ├── task.py
-│   │   └── submission.py
-│   ├── schemas/                # Pydantic схемы
-│   │   ├── user.py
-│   │   ├── task.py
-│   │   └── submission.py
-│   ├── routers/                # API эндпоинты
-│   │   ├── auth.py
-│   │   ├── tasks.py
-│   │   ├── profile.py
-│   │   └── admin.py
-│   ├── services/               # Бизнес-логика
-│   │   ├── sql_executor.py     # Выполнение SQL в sandbox
-│   │   └── scorer.py           # Подсчет очков
-│   └── utils/                  # Утилиты
-│       ├── security.py         # JWT, хэширование паролей
-│       └── websocket.py        # WebSocket менеджер
-├── tests/                      # Тесты
-├── requirements.txt
-├── Dockerfile
-└── .env
+**Response (200):**
 
-Критически важные моменты
-1. Настройка CORS (ОБЯЗАТЕЛЬНО!)
+[
+  {
+    "rank": 1,
+    "username": "Алексей Смирнов",
+    "total_points": 1250,
+    "solved_tasks": 8,
+    "avg_time": 0.45,
+    "avatar": "АС"
+  }
+]
 
-# app/main.py
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+#### WebSocket `/ws/leaderboard`
+Реалтайм-обновления лидерборда.
 
-app = FastAPI()
+**Подключение:**
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Адрес фронтенда
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+const ws = new WebSocket('ws://localhost:8000/ws/leaderboard');
 
-2. Безопасное выполнение SQL (Sandbox)
-НИКОГДА не выполняй запросы участников напрямую в основной базе!
+**Сообщение от сервера:**
 
-# app/services/sql_executor.py
+{
+  "type": "leaderboard_update",
+  "data": [
+    { "rank": 1, "username": "...", "total_points": 1300 }
+  ]
+}
+
+**Когда отправлять:**
+- После успешной проверки решения (submit)
+- Каждые 5 секунд для синхронизации
+
+---
+
+### 👥 Админка
+
+#### GET `/admin/users`
+Получить список всех пользователей.
+
+**Response (200):**
+
+[
+  {
+    "id": 1,
+    "username": "ivan.petrov",
+    "email": "ivan@cdek.digital",
+    "rating": 1250,
+    "total_points": 450,
+    "assigned_task_id": 3
+  }
+]
+
+#### POST `/admin/users/{user_id}/assign`
+Назначить задачу пользователю.
+
+**Request:**
+
+{
+  "task_id": 3
+}
+
+**Response (200):**
+
+{
+  "success": true,
+  "message": "Задача назначена"
+}
+
+#### POST `/admin/users/{user_id}/clear`
+Снять назначение задачи.
+
+**Response (200):**
+
+{
+  "success": true,
+  "message": "Назначение снято"
+}
+
+#### GET `/user/assigned-task`
+Получить назначенную задачу (для лобби).
+
+**Response (200) если задача назначена:**
+
+{
+  "id": 3,
+  "title": "Анализ заказов клиентов",
+  "difficulty": "hard",
+  "points": 500
+}
+
+**Response (404) если задача не назначена:**
+
+{
+  "error": "Task not assigned"
+}
+
+#### GET `/admin/tasks`
+Получить все задачи для админки.
+
+**Response (200):**
+
+[
+  {
+    "id": 1,
+    "title": "Найди активных хакеров",
+    "difficulty": "easy",
+    "points": 100,
+    "description": "...",
+    "schema": "...",
+    "tables": [...],
+    "expected_result": [...]
+  }
+]
+
+#### POST `/admin/tasks`
+Создать новую задачу.
+
+**Request:**
+
+{
+  "title": "Новая задача",
+  "description": "Описание задачи",
+  "difficulty": "medium",
+  "points": 250,
+  "schema": "CREATE TABLE ...",
+  "tables": [...],
+  "expected_result": [...]
+}
+
+**Response (201):**
+
+{
+  "id": 10,
+  "title": "Новая задача",
+  "success": true
+}
+
+---
+
+## 🔐 Безопасность
+
+### Sandbox для SQL-запросов
+
+Каждый запрос участника должен выполняться в изолированной среде:
+
+# Пример на Python с SQLite
 import sqlite3
 import tempfile
-import os
 
-async def execute_sql_safely(query: str, schema_sql: str, timeout: int = 2):
-    """
-    Выполняет SQL-запрос в изолированной среде.
-    """
-    # Создаем временную БД для каждого запроса
-    with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as tmp:
-        db_path = tmp.name
-    
-    try:
-        conn = sqlite3.connect(db_path)
-        conn.execute(f"PRAGMA busy_timeout = {timeout * 1000}")
+def execute_sql_in_sandbox(query: str, schema: str, test_data: list):
+    # Создаём временную БД
+    with tempfile.NamedTemporaryFile(suffix='.db') as tmp:
+        conn = sqlite3.connect(tmp.name)
         
-        # Инициализируем схему
-        conn.executescript(schema_sql)
+        # Создаём схему
+        conn.executescript(schema)
         
-        # Проверяем, что запрос только SELECT
-        if not query.strip().upper().startswith("SELECT"):
-            return {"status": "error", "message": "Разрешены только SELECT-запросы"}
+        # Загружаем тестовые данные
+        for table_data in test_data:
+            # INSERT statements...
+            pass
         
-        # Выполняем с таймаутом
-        cursor = conn.cursor()
-        cursor.execute(query)
-        results = cursor.fetchall()
+        # Выполняем запрос с таймаутом
+        conn.settimeout(3)  # 3 секунды
+        cursor = conn.execute(query)
+        result = cursor.fetchall()
         
-        # Форматируем результат
-        columns = [desc[0] for desc in cursor.description]
-        data = [dict(zip(columns, row)) for row in results]
-        
-        return {
-            "status": "success",
-            "data": data,
-            "execution_time": 0.05  # Реальное время можно замерить через time.time()
-        }
-    
-    except sqlite3.Error as e:
-        return {"status": "error", "message": str(e)}
-    
-    finally:
         conn.close()
-        os.unlink(db_path)  # Удаляем временную БД
+        return result
 
+### Валидация запросов
 
-Альтернатива для PostgreSQL:
-Использовать Docker-контейнеры с ограничением ресурсов или отдельные схемы для каждого участника.
+FORBIDDEN_KEYWORDS = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'ALTER', 'TRUNCATE']
 
+def validate_query(query: str) -> bool:
+    query_upper = query.upper()
+    for keyword in FORBIDDEN_KEYWORDS:
+        if keyword in query_upper:
+            return False
+    return True
 
-3. Сравнение результатов
+### JWT-токены
 
-# app/services/scorer.py
-def compare_results(expected: list, actual: list) -> bool:
-    """
-    Сравнивает результаты с учетом того, что порядок строк может быть разным.
-    """
-    if len(expected) != len(actual):
-        return False
-    
-    # Сортируем оба набора данных
-    expected_sorted = sorted(expected, key=lambda x: tuple(sorted(x.items())))
-    actual_sorted = sorted(actual, key=lambda x: tuple(sorted(x.items())))
-    
-    return expected_sorted == actual_sorted
-
-
-4. JWT-аутентификация
-
-# app/utils/security.py
-from passlib.context import CryptContext
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 
-SECRET_KEY = "your-secret-key-change-in-production"
+SECRET_KEY = "your-secret-key"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 120
-
-pwd_context = CryptContext(schemes=["bcrypt"])
-
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
-
-def get_password_hash(password):
-    return pwd_context.hash(password)
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 def create_access_token(data: dict):
     to_encode = data.copy()
@@ -409,90 +538,32 @@ def create_access_token(data: dict):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
+---
 
-5. WebSocket для лидерборда
+## 🚀 Инструкция по запуску
 
-# app/utils/websocket.py
-from fastapi import WebSocket
+### Frontend (этот репозиторий)
 
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: list[WebSocket] = []
+# Клонировать репозиторий
+git clone https://github.com/your-username/sql-battle.git
+cd sql-battle
 
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
+# Установить зависимости
+npm install
 
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+# Создать .env.local
+echo "NEXT_PUBLIC_API_URL=http://localhost:8000/api" > .env.local
 
-    async def broadcast(self, message: dict):
-        for connection in self.active_connections:
-            await connection.send_json(message)
+# Запустить dev-сервер
+npm run dev
 
-manager = ConnectionManager()
+# Открыть http://localhost:3000
 
+### Backend (отдельный репозиторий)
 
-База данных
-Схема PostgreSQL
-
--- Пользователи
-CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
-    username VARCHAR(50) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    rating INT DEFAULT 0,
-    total_points INT DEFAULT 0,
-    role VARCHAR(20) DEFAULT 'participant', -- 'participant' или 'admin'
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Задачи
-CREATE TABLE tasks (
-    id SERIAL PRIMARY KEY,
-    title VARCHAR(255) NOT NULL,
-    description TEXT NOT NULL,
-    schema_sql TEXT NOT NULL,
-    solution_sql TEXT NOT NULL,
-    difficulty VARCHAR(20) NOT NULL, -- 'easy', 'medium', 'hard'
-    points INT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Попытки решения
-CREATE TABLE submissions (
-    id SERIAL PRIMARY KEY,
-    user_id INT REFERENCES users(id),
-    task_id INT REFERENCES tasks(id),
-    query TEXT NOT NULL,
-    is_correct BOOLEAN NOT NULL,
-    points_earned INT DEFAULT 0,
-    execution_time FLOAT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Настройки баттла
-CREATE TABLE settings (
-    id SERIAL PRIMARY KEY,
-    battle_start TIMESTAMP NOT NULL,
-    round_duration_minutes INT NOT NULL
-);
-
-Зависимости (requirements.txt)
-
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-sqlalchemy==2.0.23
-psycopg2-binary==2.9.9
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-python-multipart==0.0.6
-pydantic==2.5.0
-pydantic-settings==2.1.0
-redis==5.0.1
-websockets==12.0
-
-Запуск бэкенда
+# Клонировать репозиторий бэкенда
+git clone https://github.com/your-username/sql-battle-backend.git
+cd sql-battle-backend
 
 # Создать виртуальное окружение
 python -m venv venv
@@ -503,67 +574,51 @@ venv\Scripts\activate  # Windows
 # Установить зависимости
 pip install -r requirements.txt
 
+# Настроить .env
+echo "DATABASE_URL=postgresql://user:pass@localhost/sql_battle" > .env
+echo "SECRET_KEY=your-secret-key" >> .env
+
+# Запустить миграции
+alembic upgrade head
+
 # Запустить сервер
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
-Деплой
-Фронтенд (Vercel — бесплатно)
-Залей код на GitHub
-Подключи репозиторий к Vercel
-Добавь переменную окружения NEXT_PUBLIC_API_URL в настройках Vercel
-Деплой произойдет автоматически при каждом push
+---
 
-Бэкенд (Docker)
+## 📝 Переключение между моками и реальным API
 
-# Dockerfile
-FROM python:3.11-slim
+В файле `lib/api.ts`:
 
-WORKDIR /app
+// Режим моков (для разработки без бэкенда)
+const USE_MOCKS = true;
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+// Режим реального API (для продакшена)
+const USE_MOCKS = false;
 
-COPY ./app ./app
+---
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+## 🎨 Брендинг
 
-docker build -t sql-battle-backend .
-docker run -p 8000:8000 sql-battle-backend
+Логотип **cdek_digital** отображается на всех страницах:
+- Файл: `public/cdek_digital.svg`
+- Компонент: `components/Logo.tsx`
+- Используется в хедере, welcome-странице, login-странице
 
-Локальный деплой на мероприятии
-Если нет интернета, можно запустить всё на одном ноутбуке:
+---
 
-# Терминал 1: Бэкенд
-cd backend
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+## 📞 Контакты
 
-# Терминал 2: Фронтенд
-cd frontend
-npm run build
-npm start -- -p 3000
+Разработчик: [Ваше имя]  
+Email: [your-email@cdek.digital]  
+GitHub: [your-username]
 
-Участники подключаются по локальной сети: http://192.168.x.x:3000
+---
 
-Roadmap
-Этап 1 (Текущий) ✅
-Арена с Monaco Editor
-Личный кабинет
-Админка
-API-мост для интеграции
-Этап 2 (Интеграция)
-Реализация бэкенда (FastAPI)
-Аутентификация (JWT)
-Безопасное выполнение SQL
-Подсчет очков
-Этап 3 (Продвинутые фичи)
-Реалтайм лидерборд (WebSocket)
-Система достижений (бейджи)
-История решений с возможностью просмотра кода
-Экспорт статистики в CSV/PDF
-Этап 4 (Масштабирование)
-Поддержка командных баттлов
-Мультиязычность (RU/EN)
-Интеграция с Telegram-ботом для уведомлений
-Мобильное приложение (React Native)
+## 📄 Лицензия
 
+MIT License - свободно для использования в рамках cdek_digital.
 
+---
+
+**Удачи на IT-слёте! 🚀**
