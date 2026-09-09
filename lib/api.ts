@@ -3,8 +3,8 @@
 import { getAuthHeaders } from "./auth";
 import { mockUser, mockTasks, mockLeaderboard } from "./mock-data";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
-const USE_MOCKS = true;
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const USE_MOCKS = false;
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -37,7 +37,9 @@ export async function getTaskById(id: number) {
             difficulty: task.difficulty
         };
     }
-    const res = await fetch(`${API_BASE_URL}/tasks/${id}`);
+    const res = await fetch(`${API_BASE_URL}/tasks/${id}`, {
+        headers: getAuthHeaders() // <-- ДОБАВЛЕНО
+    });
     if (!res.ok) throw new Error("Failed to fetch task");
     return res.json();
 }
@@ -126,7 +128,18 @@ export async function getUserProfile() {
         headers: getAuthHeaders()
     });
     if (!res.ok) throw new Error("Failed to fetch profile");
-    return res.json();
+    const data = await res.json();
+
+    // Преобразуем snake_case в camelCase
+    return {
+        id: data.id,
+        username: data.username,
+        email: data.email,
+        rating: data.rating ?? 0,
+        totalPoints: data.total_points ?? data.totalPoints ?? 0,
+        solvedTasks: data.solved_tasks ?? data.solvedTasks ?? [],
+        role: data.role ?? "participant",
+    };
 }
 
 // ==========================================
@@ -225,7 +238,17 @@ export async function getLeaderboard() {
     }
     const res = await fetch(`${API_BASE_URL}/leaderboard`);
     if (!res.ok) throw new Error("Failed to fetch leaderboard");
-    return res.json();
+    const data = await res.json();
+
+    // Преобразуем snake_case в camelCase для совместимости с фронтендом
+    return data.map((entry: any) => ({
+        rank: entry.rank,
+        username: entry.username,
+        avatar: entry.avatar,
+        totalPoints: entry.total_points ?? entry.totalPoints ?? 0,
+        solvedTasks: entry.solved_tasks ?? entry.solvedTasks ?? 0,
+        avgTime: entry.avg_time ?? entry.avgTime ?? 0,
+    }));
 }
 
 export function connectLeaderboardWebSocket(onUpdate: (data: any[]) => void) {
@@ -236,8 +259,20 @@ export function connectLeaderboardWebSocket(onUpdate: (data: any[]) => void) {
 
     if (typeof window === "undefined") return null;
 
-    const wsUrl = API_BASE_URL.replace('http://', 'ws://').replace('/api', '/ws');
-    const ws = new WebSocket(`${wsUrl}/leaderboard`);
+    // 1. Получаем токен из localStorage
+    const token = typeof window !== "undefined" ? localStorage.getItem("sql_battle_token") : null;
+
+    // 2. Формируем базовый WS URL (убираем /api, меняем http на ws)
+    const wsBaseUrl = API_BASE_URL.replace('http://', 'ws://').replace('/api', '');
+
+    // 3. Добавляем токен в query-параметр, т.к. заголовки в WS не поддерживаются
+    const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : "";
+    const wsUrl = `${wsBaseUrl}/ws/leaderboard${tokenQuery}`;
+
+    console.log("🔌 Попытка подключения к WebSocket:", wsUrl);
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => console.log("✅ [WebSocket] Соединение установлено");
 
     ws.onmessage = (event) => {
         try {
@@ -251,8 +286,10 @@ export function connectLeaderboardWebSocket(onUpdate: (data: any[]) => void) {
     };
 
     ws.onerror = (error) => {
-        console.error("[WebSocket] Ошибка:", error);
+        console.error("❌ [WebSocket] Ошибка соединения. Проверьте, что бэкенд запущен и принимает токен в query-параметре.");
     };
+
+    ws.onclose = () => console.log("🔌 [WebSocket] Соединение закрыто");
 
     return ws;
 }
@@ -315,5 +352,20 @@ export async function clearAssignment(userId: number) {
         method: "POST",
         headers: headers
     });
+    return res.json();
+}
+// ==========================================
+// 7. ИСТОРИЯ ПОПЫТОК (ПРОФИЛЬ)
+// ==========================================
+
+export async function getUserSubmissionHistory() {
+    if (USE_MOCKS) {
+        await delay(300);
+        return [];
+    }
+    const res = await fetch(`${API_BASE_URL}/profile/history`, {
+        headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error("Failed to fetch submission history");
     return res.json();
 }

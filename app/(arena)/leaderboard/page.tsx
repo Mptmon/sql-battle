@@ -210,19 +210,19 @@ export default function LeaderboardPage() {
                                         {/* Решено задач */}
                                         <TableCell className="text-center">
                                             <Badge variant="secondary" className="bg-zinc-800 text-zinc-300">
-                                                {entry.solvedTasks}
+                                                {entry.solvedTasks ?? entry.solved_tasks ?? 0}
                                             </Badge>
                                         </TableCell>
 
                                         {/* Среднее время */}
                                         <TableCell className="text-center font-mono text-zinc-400">
-                                            {entry.avgTime.toFixed(2)}с
+                                            {(entry.avgTime ?? entry.avg_time ?? 0).toFixed(2)}с
                                         </TableCell>
 
                                         {/* Баллы */}
                                         <TableCell className="text-right">
                                             <span className={`text-xl font-bold ${isTop3 ? "text-yellow-400" : "text-emerald-400"}`}>
-                                                {entry.totalPoints}
+                                                {entry.totalPoints ?? entry.total_points ?? 0}
                                             </span>
                                         </TableCell>
                                     </TableRow>

@@ -1,4 +1,3 @@
-// app/(arena)/login/page.tsx
 "use client"
 
 import { useState } from "react"
@@ -10,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Loader2, Shield, Zap } from "lucide-react"
 import { toast } from "sonner"
-import { setToken, setUser } from "@/lib/auth"
+import { login, register } from "@/lib/auth" // <-- ИМПОРТИРУЕМ РЕАЛЬНЫЕ ФУНКЦИИ
 
 export default function LoginPage() {
     const router = useRouter()
@@ -23,28 +22,13 @@ export default function LoginPage() {
         setIsLoading(true)
 
         try {
-            await new Promise(resolve => setTimeout(resolve, 800))
-
-            if (loginData.username.length < 3 || loginData.password.length < 3) {
-                toast.error("Ошибка входа", { description: "Логин и пароль должны быть длиннее 3 символов" })
-                setIsLoading(false)
-                return
-            }
-
-            setToken("mock-jwt-token-" + Date.now())
-            setUser({
-                id: 1,
-                username: loginData.username,
-                email: loginData.username + "@company.com",
-                rating: 1250,
-                totalPoints: 450,
-                role: "participant"
-            })
+            // Вызываем РЕАЛЬНУЮ функцию, которая идет на бэкенд
+            await login(loginData.username, loginData.password)
 
             toast.success("Добро пожаловать!", { description: `Привет, ${loginData.username}!` })
-            router.push("/lobby") // <-- Редирект в Лобби
-        } catch (error) {
-            toast.error("Ошибка сервера")
+            router.push("/lobby")
+        } catch (error: any) {
+            toast.error("Ошибка входа", { description: error.message || "Неверный логин или пароль" })
         } finally {
             setIsLoading(false)
         }
@@ -55,28 +39,13 @@ export default function LoginPage() {
         setIsLoading(true)
 
         try {
-            await new Promise(resolve => setTimeout(resolve, 800))
-
-            if (registerData.username.length < 3 || registerData.password.length < 3) {
-                toast.error("Ошибка регистрации", { description: "Логин и пароль должны быть длиннее 3 символов" })
-                setIsLoading(false)
-                return
-            }
-
-            setToken("mock-jwt-token-" + Date.now())
-            setUser({
-                id: Math.floor(Math.random() * 1000),
-                username: registerData.username,
-                email: registerData.email || registerData.username + "@company.com",
-                rating: 0,
-                totalPoints: 0,
-                role: "participant"
-            })
+            // Вызываем РЕАЛЬНУЮ функцию регистрации
+            await register(registerData.username, registerData.email, registerData.password)
 
             toast.success("Регистрация успешна!", { description: "Добро пожаловать в баттл!" })
-            router.push("/lobby") // <-- Редирект в Лобби
-        } catch (error) {
-            toast.error("Ошибка сервера")
+            router.push("/lobby")
+        } catch (error: any) {
+            toast.error("Ошибка регистрации", { description: error.message || "Пользователь уже существует или неверные данные" })
         } finally {
             setIsLoading(false)
         }
@@ -114,7 +83,7 @@ export default function LoginPage() {
                                         <Input
                                             id="login-username"
                                             type="text"
-                                            placeholder="ivan.petrov"
+                                            placeholder="admin"
                                             value={loginData.username}
                                             onChange={(e) => setLoginData({ ...loginData, username: e.target.value })}
                                             className="bg-zinc-950 border-zinc-800 text-zinc-100"
@@ -126,7 +95,7 @@ export default function LoginPage() {
                                         <Input
                                             id="login-password"
                                             type="password"
-                                            placeholder="••••••••"
+                                            placeholder="admin123"
                                             value={loginData.password}
                                             onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
                                             className="bg-zinc-950 border-zinc-800 text-zinc-100"
