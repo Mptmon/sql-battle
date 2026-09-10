@@ -1,4 +1,3 @@
-// app/(arena)/battle/page.tsx
 "use client"
 
 import { useState, useEffect } from "react"
@@ -12,29 +11,60 @@ import { Loader2, Database, Play, CheckCircle2, AlertCircle, LogOut } from "luci
 import SqlEditor from "@/components/SqlEditor"
 import DatabaseSchema from "@/components/DatabaseSchema"
 import { toast } from "sonner"
-import { getTaskById, executeQuery, submitSolution } from "@/lib/api"
-
-const CURRENT_TASK_ID = 3
+import { getAssignedTask, getTaskById, executeQuery, submitSolution } from "@/lib/api"
 
 export default function BattlePage() {
     const router = useRouter()
     const [task, setTask] = useState<any>(null)
-    const [sqlQuery, setSqlQuery] = useState("SELECT name, SUM(total_amount) as total_sum, COUNT(*) as order_count\nFROM users\nJOIN orders ON users.id = orders.user_id\nGROUP BY users.name\nHAVING COUNT(*) > 2\nORDER BY total_sum DESC;")
+    const [sqlQuery, setSqlQuery] = useState("")
     const [isExecuting, setIsExecuting] = useState(false)
     const [result, setResult] = useState<null | { type: 'success', data: any[] } | { type: 'error', message: string }>(null)
     const [isTimeUp, setIsTimeUp] = useState(false)
     const [expectedResult, setExpectedResult] = useState<any[] | null>(null)
+    const [isNextTaskLoading, setIsNextTaskLoading] = useState(false)
+    const [timeLeft, setTimeLeft] = useState(300)
+    const [currentTaskId, setCurrentTaskId] = useState<number | null>(null)
+
+    const resetTimer = () => {
+        localStorage.setItem("battle_start_time", Date.now().toString())
+        localStorage.setItem("battle_duration", "300")
+        setIsTimeUp(false)
+        setTimeLeft(300)
+        console.log("🔥 Таймер сброшен:", Date.now().toString())
+    }
 
     useEffect(() => {
-        async function loadTask() {
+        async function loadCurrentTask() {
+            // 🔥 ПРОВЕРКА: если турнир не активен, редиректим в лобби
+            const isTournamentActive = localStorage.getItem("isTournamentActive") === "true"
+            if (!isTournamentActive) {
+                toast.warning("Турнир ещё не начался", {
+                    description: "Вернитесь в лобби и дождитесь старта."
+                })
+                router.push("/lobby")
+                return
+            }
+
             try {
-                const data = await getTaskById(CURRENT_TASK_ID)
-                setTask(data)
+                const assigned = await getAssignedTask()
+                if (assigned) {
+                    const fullTask = await getTaskById(assigned.id)
+                    setTask(fullTask)
+                    setCurrentTaskId(fullTask.id)
+                    resetTimer()
+                } else {
+                    toast.info("Все задачи решены!", { description: "Ожидайте окончания турнира." })
+                    localStorage.removeItem("isTournamentActive")
+                    localStorage.setItem("allTasksCompleted", "true") // 🔥 ДОБАВЛЕНО
+                    router.push("/lobby")
+                }
             } catch (error) {
-                toast.error("Ошибка загрузки задачи")
+                console.error("Ошибка загрузки задачи", error)
+                toast.error("Не удалось загрузить задачу")
             }
         }
-        loadTask()
+
+        loadCurrentTask()
 
         const checkTime = () => {
             const startTimeStr = localStorage.getItem("battle_start_time")
@@ -44,9 +74,15 @@ export default function BattlePage() {
                 const startTime = parseInt(startTimeStr, 10)
                 const duration = parseInt(durationStr, 10)
                 const elapsed = Math.floor((Date.now() - startTime) / 1000)
+                const remaining = duration - elapsed
 
-                if (elapsed >= duration) {
+                if (remaining <= 0) {
                     setIsTimeUp(true)
+                    setTimeLeft(0)
+                    handleTimeUp()
+                } else {
+                    setIsTimeUp(false)
+                    setTimeLeft(remaining)
                 }
             }
         }
@@ -55,6 +91,7 @@ export default function BattlePage() {
         const interval = setInterval(checkTime, 1000)
 
         return () => clearInterval(interval)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
     const handleExecute = async () => {
@@ -86,40 +123,100 @@ export default function BattlePage() {
 
     const handleSubmit = async () => {
         if (!task) return
-
         if (isTimeUp) {
-            toast.error("Время вышло!", {
-                description: "К сожалению, время на выполнение задачи истекло",
-                duration: 5000
-            })
+            toast.error("Время вышло!", { description: "К сожалению, время на выполнение задачи истекло" })
             return
         }
 
-        toast.info("Отправка на проверку...")
+        toast.info("Отправка решения на проверку...", { duration: 2000 })
+
         try {
-            const res = await submitSolution(task.id, sqlQuery)
-            if (res.is_correct) {
-                toast.success("Верно! 🎉", { description: `+${res.points_earned} баллов` })
-                if (res.expected_result) {
-                    setExpectedResult(res.expected_result)
-                }
+            const timeSpent = 300 - timeLeft;
+            await submitSolution(task.id, sqlQuery, timeSpent)
+
+            setIsNextTaskLoading(true)
+            setResult(null)
+            setExpectedResult(null)
+            setSqlQuery("")
+
+            const nextAssigned = await getAssignedTask()
+
+            await new Promise(resolve => setTimeout(resolve, 1500))
+
+            if (nextAssigned) {
+                const fullTask = await getTaskById(nextAssigned.id)
+                console.log(" Полная информация о новой задаче:", fullTask)
+                setTask(fullTask)
+                setCurrentTaskId(fullTask.id)
+                resetTimer()
+                toast.success("Новая задача получена", { description: "У вас есть 5 минут." })
             } else {
-                toast.error("Неверно", { description: "Попробуйте еще раз" })
-                if (res.expected_result) {
-                    setExpectedResult(res.expected_result)
-                }
+                toast.info("Все задачи решены!", { description: "Ожидайте окончания турнира." })
+                localStorage.removeItem("isTournamentActive")
+                localStorage.setItem("allTasksCompleted", "true") // 🔥 ДОБАВЛЕНО
+                router.push("/lobby")
+                return
             }
         } catch (error) {
-            toast.error("Ошибка проверки")
+            toast.error("Ошибка при отправке решения")
+        } finally {
+            setIsNextTaskLoading(false)
+        }
+    }
+
+    const handleTimeUp = async () => {
+        console.log("⏰ Время вышло! Переход к следующей задаче...")
+
+        setIsNextTaskLoading(true)
+        setResult(null)
+        setExpectedResult(null)
+        setSqlQuery("")
+
+        try {
+            await new Promise(resolve => setTimeout(resolve, 1500))
+
+            const nextAssigned = await getAssignedTask()
+
+            if (nextAssigned) {
+                console.log(" Следующая задача после истечения времени:", nextAssigned)
+                const fullTask = await getTaskById(nextAssigned.id)
+                console.log("📋 Полная информация:", fullTask)
+                setTask(fullTask)
+                setCurrentTaskId(fullTask.id)
+                resetTimer()
+                toast.info("Время вышло! Переход к следующей задаче.", { duration: 3000 })
+            } else {
+                toast.info("Время вышло! Все задачи завершены.", { description: "Ожидайте окончания турнира." })
+                localStorage.removeItem("isTournamentActive")
+                localStorage.setItem("allTasksCompleted", "true") // 🔥 ДОБАВЛЕНО
+                router.push("/lobby")
+                return
+            }
+        } catch (error) {
+            console.error("Ошибка при переходе к следующей задаче:", error)
+            toast.error("Ошибка при загрузке следующей задачи")
+        } finally {
+            setIsNextTaskLoading(false)
         }
     }
 
     const handleExitToLobby = () => {
         localStorage.removeItem("battle_start_time")
         localStorage.removeItem("battle_duration")
+        localStorage.removeItem("isTournamentActive") // 🔥 ДОБАВЛЯЕМ СЮДА ДЛЯ ПОЛНОЙ ЧИСТОТЫ
         setExpectedResult(null)
         toast.info("Возврат в лобби", { description: "Ожидание новой задачи..." })
         router.push("/lobby")
+    }
+
+    if (isNextTaskLoading) {
+        return (
+            <div className="h-[calc(100vh-80px)] flex flex-col items-center justify-center text-zinc-500 gap-4 bg-zinc-950/50 backdrop-blur-sm">
+                <Loader2 className="h-16 w-16 animate-spin text-emerald-500" />
+                <p className="text-2xl font-semibold text-zinc-200 animate-pulse">Загрузка следующей задачи...</p>
+                <p className="text-sm text-zinc-500">Таймер сброшен. Готовьтесь!</p>
+            </div>
+        )
     }
 
     if (!task) {
@@ -134,8 +231,8 @@ export default function BattlePage() {
     return (
         <div className="h-[calc(100vh-80px)] flex flex-col gap-4">
             <div className="flex-1 flex flex-col md:flex-row gap-4 min-h-0">
-                <div className="w-full md:w-1/3 flex flex-col">
-                    <Card className="bg-zinc-900 border-zinc-800 flex-1 flex flex-col transition-all duration-300 hover:border-zinc-700">
+                <div className="w-full md:w-2/5 flex flex-col">
+                    <Card className="bg-zinc-900 border-zinc-800 flex-1 flex flex-col min-h-[500px] transition-all duration-300 hover:border-zinc-700">
                         <CardHeader className="border-b border-zinc-800 pb-3">
                             <div className="flex justify-between items-start gap-2">
                                 <CardTitle className="text-emerald-400 text-lg leading-tight">Задача #{task.id}: {task.title}</CardTitle>
@@ -171,7 +268,7 @@ export default function BattlePage() {
                     </Card>
                 </div>
 
-                <div className="w-full md:w-2/3 flex flex-col">
+                <div className="w-full md:w-3/5 flex flex-col">
                     <div className="flex justify-between items-center mb-2">
                         <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
                             <Database className="h-4 w-4" /> SQL Editor
@@ -194,14 +291,7 @@ export default function BattlePage() {
                                 <CheckCircle2 className="mr-2 h-4 w-4" />
                                 Отправить решение
                             </Button>
-                            <Button
-                                variant="outline"
-                                className="bg-zinc-900 border-zinc-700 hover:bg-zinc-800 text-zinc-400 hover:text-orange-400 transition-all active:scale-95"
-                                onClick={handleExitToLobby}
-                            >
-                                <LogOut className="mr-2 h-4 w-4" />
-                                Выйти в лобби
-                            </Button>
+
                         </div>
                     </div>
 

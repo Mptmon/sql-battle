@@ -1,4 +1,3 @@
-// app/(arena)/layout.tsx
 "use client"
 
 import { useEffect, useState } from "react"
@@ -11,12 +10,14 @@ import { getUser, isAuthenticated, logout } from "@/lib/auth"
 import type { User as UserType } from "@/lib/auth"
 import Timer from "@/components/Timer"
 import Logo from "@/components/Logo"
+import { toast } from "sonner"
 
 export default function ArenaLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname()
     const router = useRouter()
     const [user, setUser] = useState<UserType | null>(null)
     const [isAuth, setIsAuth] = useState(false)
+    const [isTournamentActive, setIsTournamentActive] = useState(false)
 
     useEffect(() => {
         const auth = isAuthenticated()
@@ -28,6 +29,43 @@ export default function ArenaLayout({ children }: { children: React.ReactNode })
         if (!auth && !publicRoutes.includes(pathname)) {
             router.replace("/login")
         }
+
+        // Проверяем статус турнира через localStorage (устанавливается лобби)
+        const checkTournamentStatus = () => {
+            const startStr = localStorage.getItem("tournament_start")
+            const endStr = localStorage.getItem("tournament_end")
+            const allTasksCompleted = localStorage.getItem("allTasksCompleted") === "true"
+
+            if (!startStr || !endStr) {
+                setIsTournamentActive(false)
+                return
+            }
+
+            const now = new Date().getTime()
+            const startTime = new Date(startStr).getTime()
+            const endTime = new Date(endStr).getTime()
+
+            // Турнир активен между start и end
+            const isBetweenStartAndEnd = now >= startTime && now < endTime
+
+            // Вкладки скрыты если: турнир идет ИЛИ все задачи решены (но турнир еще не закончился)
+            const shouldHideTabs = isBetweenStartAndEnd || allTasksCompleted
+            setIsTournamentActive(shouldHideTabs)
+
+            // Блокировка ручного перехода в профиль/лидерборд
+            if (shouldHideTabs && (pathname === "/profile" || pathname === "/leaderboard")) {
+                toast.warning("Доступ ограничен", {
+                    description: "Нельзя переходить в профиль или лидерборд до завершения турнира!"
+                })
+                router.replace("/lobby")
+            }
+        }
+
+        checkTournamentStatus()
+        // Проверяем каждую секунду, чтобы вовремя переключить состояние
+        const interval = setInterval(checkTournamentStatus, 1000)
+
+        return () => clearInterval(interval)
     }, [pathname, router])
 
     const handleLogout = () => {
@@ -63,9 +101,12 @@ export default function ArenaLayout({ children }: { children: React.ReactNode })
                     </div>
                     {isAuth && (
                         <nav className="hidden md:flex gap-4 text-sm">
-                            <Link href="/battle" className="text-zinc-300 hover:text-emerald-400 transition">Арена</Link>
-                            <Link href="/profile" className="text-zinc-300 hover:text-emerald-400 transition">Мой профиль</Link>
-                            <Link href="/leaderboard" className="text-zinc-300 hover:text-emerald-400 transition">Лидерборд</Link>
+                            {!isTournamentActive && (
+                                <>
+                                    <Link href="/profile" className="text-zinc-300 hover:text-emerald-400 transition">Мой профиль</Link>
+                                    <Link href="/leaderboard" className="text-zinc-300 hover:text-emerald-400 transition">Лидерборд</Link>
+                                </>
+                            )}
                         </nav>
                     )}
                 </div>

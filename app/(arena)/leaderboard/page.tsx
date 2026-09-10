@@ -2,11 +2,13 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation" // 🔥 ДОБАВЛЕНО
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Trophy, Medal, Crown, Users, Clock, Target, Loader2 } from "lucide-react"
+import { Button } from "@/components/ui/button" // 🔥 ДОБАВЛЕНО
+import { Loader2, Trophy, Medal, Crown, Users, Clock, Target, LogOut } from "lucide-react"
 import { getLeaderboard, connectLeaderboardWebSocket } from "@/lib/api"
 import { getUser } from "@/lib/auth"
 import { toast } from "sonner"
@@ -16,11 +18,12 @@ interface LeaderboardEntry {
     username: string
     totalPoints: number
     solvedTasks: number
-    avgTime: number
+    totalTimeSpent: number // 🔥 ИЗМЕНЕНИЕ 1: было avgTime
     avatar: string
 }
 
 export default function LeaderboardPage() {
+    const router = useRouter() //  ДОБАВЛЕНО
     const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
     const [isLoading, setIsLoading] = useState(true)
     const currentUser = getUser()
@@ -77,8 +80,16 @@ export default function LeaderboardPage() {
 
     // Статистика
     const totalParticipants = leaderboard.length
-    const totalPoints = leaderboard.reduce((sum, entry) => sum + entry.totalPoints, 0)
-    const avgSolvedTasks = (leaderboard.reduce((sum, entry) => sum + entry.solvedTasks, 0) / totalParticipants).toFixed(1)
+    const totalSolvedTasks = leaderboard.reduce((sum, entry) => sum + (entry.solvedTasks ?? 0), 0)
+    const totalPoints = leaderboard.reduce((sum, entry) => sum + (entry.totalPoints ?? 0), 0)
+    const avgPointsPerUser = totalParticipants > 0 ? Math.round(totalPoints / totalParticipants) : 0
+
+    // 🔥 ИЗМЕНЕНИЕ 2: Функция для красивого форматирования секунд в "Xм YYс"
+    const formatDuration = (seconds: number) => {
+        const m = Math.floor(seconds / 60)
+        const s = seconds % 60
+        return `${m}м ${s.toString().padStart(2, '0')}с`
+    }
 
     return (
         <div className="max-w-6xl mx-auto space-y-6">
@@ -107,8 +118,8 @@ export default function LeaderboardPage() {
                                 <Target className="h-5 w-5 text-emerald-400" />
                             </div>
                             <div>
-                                <div className="text-2xl font-bold text-zinc-100">{totalPoints}</div>
-                                <div className="text-xs text-zinc-500 uppercase">Всего баллов</div>
+                                <div className="text-2xl font-bold text-zinc-100">{totalSolvedTasks}</div>
+                                <div className="text-xs text-zinc-500 uppercase">Всего решено задач</div>
                             </div>
                         </div>
                     </CardContent>
@@ -121,8 +132,8 @@ export default function LeaderboardPage() {
                                 <Clock className="h-5 w-5 text-blue-400" />
                             </div>
                             <div>
-                                <div className="text-2xl font-bold text-zinc-100">{avgSolvedTasks}</div>
-                                <div className="text-xs text-zinc-500 uppercase">Среднее задач</div>
+                                <div className="text-2xl font-bold text-zinc-100">{avgPointsPerUser}</div>
+                                <div className="text-xs text-zinc-500 uppercase">Средний балл на участника</div>
                             </div>
                         </div>
                     </CardContent>
@@ -155,7 +166,8 @@ export default function LeaderboardPage() {
                                 <TableHead className="text-zinc-400 w-20 text-center">Место</TableHead>
                                 <TableHead className="text-zinc-400">Участник</TableHead>
                                 <TableHead className="text-zinc-400 text-center">Решено задач</TableHead>
-                                <TableHead className="text-zinc-400 text-center">Среднее время</TableHead>
+                                {/* 🔥 ИЗМЕНЕНИЕ 3: Заголовок столбца */}
+                                <TableHead className="text-zinc-400 text-center">Общее время</TableHead>
                                 <TableHead className="text-zinc-400 text-right">Баллы</TableHead>
                             </TableRow>
                         </TableHeader>
@@ -210,19 +222,19 @@ export default function LeaderboardPage() {
                                         {/* Решено задач */}
                                         <TableCell className="text-center">
                                             <Badge variant="secondary" className="bg-zinc-800 text-zinc-300">
-                                                {entry.solvedTasks ?? entry.solved_tasks ?? 0}
+                                                {entry.solvedTasks ?? 0}
                                             </Badge>
                                         </TableCell>
 
-                                        {/* Среднее время */}
+                                        {/* 🔥 ИЗМЕНЕНИЕ 4: Ячейка с отформатированным временем */}
                                         <TableCell className="text-center font-mono text-zinc-400">
-                                            {(entry.avgTime ?? entry.avg_time ?? 0).toFixed(2)}с
+                                            {formatDuration(entry.totalTimeSpent ?? 0)}
                                         </TableCell>
 
                                         {/* Баллы */}
                                         <TableCell className="text-right">
                                             <span className={`text-xl font-bold ${isTop3 ? "text-yellow-400" : "text-emerald-400"}`}>
-                                                {entry.totalPoints ?? entry.total_points ?? 0}
+                                                {entry.totalPoints ?? 0}
                                             </span>
                                         </TableCell>
                                     </TableRow>
@@ -236,6 +248,18 @@ export default function LeaderboardPage() {
             {/* Подсказка про WebSocket */}
             <div className="text-center text-xs text-zinc-600">
                 💡 Лидерборд обновляется в реальном времени через WebSocket (когда подключен бэкенд)
+            </div>
+
+            {/* 🔥 КНОПКА ВОЗВРАТА В ЛОББИ */}
+            <div className="flex justify-center mt-6">
+                <Button
+                    variant="outline"
+                    onClick={() => router.push("/lobby")}
+                    className="bg-zinc-900 border-zinc-700 hover:bg-zinc-800 text-zinc-300 transition-all active:scale-95"
+                >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Вернуться в лобби
+                </Button>
             </div>
         </div>
     )

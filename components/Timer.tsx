@@ -1,4 +1,3 @@
-// components/Timer.tsx
 "use client"
 
 import { useEffect, useState } from "react"
@@ -9,48 +8,44 @@ export default function Timer() {
     const [isActive, setIsActive] = useState(false)
 
     useEffect(() => {
-        const startTimeStr = localStorage.getItem("battle_start_time")
-        const durationStr = localStorage.getItem("battle_duration")
+        // Функция, которая проверяет localStorage КАЖДУЮ секунду
+        const updateTimer = () => {
+            const startTimeStr = localStorage.getItem("battle_start_time")
+            const durationStr = localStorage.getItem("battle_duration")
 
-        if (!startTimeStr || !durationStr) {
-            // Таймер не запущен (пользователь в лобби или на другой странице)
-            setTimeLeft(null)
-            setIsActive(false)
-            return
-        }
-
-        const startTime = parseInt(startTimeStr, 10)
-        const duration = parseInt(durationStr, 10)
-
-        // Проверяем, не истёк ли таймер ещё до загрузки страницы
-        const now = Date.now()
-        const elapsed = Math.floor((now - startTime) / 1000)
-        const remaining = duration - elapsed
-
-        if (remaining <= 0) {
-            setTimeLeft(0)
-            setIsActive(true)
-            return
-        }
-
-        setTimeLeft(remaining)
-        setIsActive(true)
-
-        const interval = setInterval(() => {
-            const currentNow = Date.now()
-            const currentElapsed = Math.floor((currentNow - startTime) / 1000)
-            const currentRemaining = duration - currentElapsed
-
-            if (currentRemaining <= 0) {
-                setTimeLeft(0)
-                clearInterval(interval)
-            } else {
-                setTimeLeft(currentRemaining)
+            // Если данных нет (пользователь в лобби), сбрасываем состояние
+            if (!startTimeStr || !durationStr) {
+                setTimeLeft(null)
+                setIsActive(false)
+                return
             }
-        }, 1000)
+
+            const startTime = parseInt(startTimeStr, 10)
+            const duration = parseInt(durationStr, 10)
+            const now = Date.now()
+
+            const elapsed = Math.floor((now - startTime) / 1000)
+            const remaining = duration - elapsed
+
+            if (remaining <= 0) {
+                setTimeLeft(0)
+                setIsActive(true)
+            } else {
+                setTimeLeft(remaining)
+                setIsActive(true)
+            }
+        }
+
+        // Запускаем проверку сразу при монтировании
+        updateTimer()
+
+        // И повторяем каждую секунду. 
+        // Благодаря этому, как только battle/page.tsx обновит localStorage, 
+        // таймер на следующем тике (через макс. 1 сек) увидит новые данные и сбросится!
+        const interval = setInterval(updateTimer, 1000)
 
         return () => clearInterval(interval)
-    }, [])
+    }, []) // Массив зависимостей пуст, но это ОК, т.к. мы читаем localStorage внутри интервала
 
     const formatTime = (seconds: number) => {
         const m = Math.floor(seconds / 60)

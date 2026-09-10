@@ -1,27 +1,47 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Trophy, Clock, Target } from "lucide-react"
-import { getUserProfile, getUserSubmissionHistory } from "@/lib/api"
+import { Button } from "@/components/ui/button"
+import { Loader2, Trophy, Clock, Target, LogOut } from "lucide-react"
+import { getUserProfile, getUserSubmissionHistory, getLeaderboard } from "@/lib/api"
+import { getUser } from "@/lib/auth"
 
 export default function ProfilePage() {
+    const router = useRouter()
     const [profile, setProfile] = useState<any>(null)
     const [history, setHistory] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
+    const [userRank, setUserRank] = useState<number | null>(null)
+    const [totalParticipants, setTotalParticipants] = useState(0)
 
     useEffect(() => {
         const loadData = async () => {
             try {
-                const [profileData, historyData] = await Promise.all([
+                const [profileData, historyData, leaderboardData] = await Promise.all([
                     getUserProfile(),
-                    getUserSubmissionHistory()
+                    getUserSubmissionHistory(),
+                    getLeaderboard()
                 ])
+
                 setProfile(profileData)
                 setHistory(historyData)
+
+                // Находим пользователя в лидерборде
+                const currentUser = getUser()
+                if (currentUser?.username) {
+                    const userEntry = leaderboardData.find(
+                        (entry: any) => entry.username === currentUser.username
+                    )
+                    if (userEntry) {
+                        setUserRank(userEntry.rank)
+                    }
+                }
+                setTotalParticipants(leaderboardData.length)
             } catch (error) {
                 console.error("Failed to load profile data:", error)
             } finally {
@@ -44,10 +64,18 @@ export default function ProfilePage() {
     const correctSubmissions = history.filter(h => h.is_correct)
     const solvedTasksCount = correctSubmissions.length
 
-    // Лучший результат (минимальное время среди правильных решений)
-    const bestTime = correctSubmissions.length > 0
-        ? Math.min(...correctSubmissions.map(h => h.execution_time)).toFixed(2)
-        : "0.00"
+    // Общее время решения (сумма времени по всем решенным задачам)
+    const totalTimeSpent = correctSubmissions.reduce((sum, h) => {
+        const time = h.time_spent !== undefined ? h.time_spent : (h.execution_time || 0)
+        return sum + time
+    }, 0)
+
+    // Функция для красивого форматирования секунд в "Xм YYс"
+    const formatDuration = (seconds: number) => {
+        const m = Math.floor(seconds / 60)
+        const s = seconds % 60
+        return `${m}м ${s.toString().padStart(2, '0')}с`
+    }
 
     // Любимая сложность (та, которую решали чаще всего)
     const difficultyCounts: Record<string, number> = { easy: 0, medium: 0, hard: 0 }
@@ -63,6 +91,11 @@ export default function ProfilePage() {
         medium: "border-yellow-500 text-yellow-400",
         hard: "border-red-500 text-red-400"
     }
+
+    // Вычисляем процентиль (рейтинг)
+    const percentile = userRank && totalParticipants > 1
+        ? Math.round(((totalParticipants - userRank) / (totalParticipants - 1)) * 100)
+        : 0
 
     return (
         <div className="max-w-5xl mx-auto space-y-6">
@@ -87,7 +120,9 @@ export default function ProfilePage() {
 
                     <div className="flex gap-8 text-center">
                         <div>
-                            <div className="text-3xl font-bold text-emerald-400">#{profile.rank || 1}</div>
+                            <div className="text-3xl font-bold text-emerald-400">
+                                {userRank ? `#${userRank}` : "—"}
+                            </div>
                             <div className="text-xs text-zinc-500 uppercase">Место</div>
                         </div>
                         <div>
@@ -95,7 +130,7 @@ export default function ProfilePage() {
                             <div className="text-xs text-zinc-500 uppercase">Баллов</div>
                         </div>
                         <div>
-                            <div className="text-3xl font-bold text-zinc-100">{profile.rating}</div>
+                            <div className="text-3xl font-bold text-zinc-100">{percentile}%</div>
                             <div className="text-xs text-zinc-500 uppercase">Рейтинг</div>
                         </div>
                     </div>
@@ -105,7 +140,7 @@ export default function ProfilePage() {
             {/* Статистика и История решений */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
-                {/* Блок "Статистика баттла" (строго по ТЗ) */}
+                {/* Блок "Статистика баттла" */}
                 <Card className="bg-zinc-900 border-zinc-800 transition-all duration-300 hover:scale-[1.01] hover:border-zinc-700 hover:shadow-xl hover:shadow-black/20">
                     <CardHeader>
                         <CardTitle className="text-emerald-400 text-sm uppercase flex items-center gap-2">
@@ -118,8 +153,8 @@ export default function ProfilePage() {
                             <span className="font-bold text-zinc-100 text-lg">{solvedTasksCount}</span>
                         </div>
                         <div className="flex justify-between items-center">
-                            <span className="text-zinc-400 flex items-center gap-2"><Clock className="h-4 w-4" /> Лучший результат:</span>
-                            <span className="font-bold text-emerald-400 text-lg">{bestTime} сек</span>
+                            <span className="text-zinc-400 flex items-center gap-2"><Clock className="h-4 w-4" /> Общее время решения:</span>
+                            <span className="font-bold text-emerald-400 text-lg">{formatDuration(totalTimeSpent)}</span>
                         </div>
                         <div className="flex justify-between items-center">
                             <span className="text-zinc-400">Любимая сложность:</span>
@@ -134,7 +169,7 @@ export default function ProfilePage() {
                     </CardContent>
                 </Card>
 
-                {/* Блок "История решений" (строго по ТЗ) */}
+                {/* Блок "История решений" */}
                 <Card className="bg-zinc-900 border-zinc-800 md:col-span-2">
                     <CardHeader>
                         <CardTitle className="text-emerald-400 text-sm uppercase">История решений</CardTitle>
@@ -163,7 +198,7 @@ export default function ProfilePage() {
                                                 </Badge>
                                             </TableCell>
                                             <TableCell className="text-center text-zinc-400 font-mono">
-                                                {item.execution_time} сек
+                                                {formatDuration(item.time_spent !== undefined ? item.time_spent : (item.execution_time || 0))}
                                             </TableCell>
                                             <TableCell className={`text-right font-bold ${item.is_correct ? 'text-emerald-400' : 'text-zinc-600'}`}>
                                                 {item.is_correct ? `+${item.points_earned}` : "0"}
@@ -181,6 +216,18 @@ export default function ProfilePage() {
                         )}
                     </CardContent>
                 </Card>
+            </div>
+
+            {/* Кнопка возврата в лобби */}
+            <div className="flex justify-center mt-6">
+                <Button
+                    variant="outline"
+                    onClick={() => router.push("/lobby")}
+                    className="bg-zinc-900 border-zinc-700 hover:bg-zinc-800 text-zinc-300 transition-all active:scale-95"
+                >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Вернуться в лобби
+                </Button>
             </div>
         </div>
     )

@@ -38,7 +38,7 @@ export async function getTaskById(id: number) {
         };
     }
     const res = await fetch(`${API_BASE_URL}/tasks/${id}`, {
-        headers: getAuthHeaders() // <-- ДОБАВЛЕНО
+        headers: getAuthHeaders()
     });
     if (!res.ok) throw new Error("Failed to fetch task");
     return res.json();
@@ -70,17 +70,16 @@ export async function executeQuery(taskId: number, query: string) {
     return res.json();
 }
 
-export async function submitSolution(taskId: number, query: string) {
+// 🔥 ИЗМЕНЕНИЕ 1: Добавлен параметр timeSpent
+export async function submitSolution(taskId: number, query: string, timeSpent: number) {
     if (USE_MOCKS) {
         await delay(1000);
-
         const task = mockTasks.find(t => t.id === taskId);
 
         if (!task || !task.expectedResult) {
             return { is_correct: false, points_earned: 0, new_total_points: 0, expected_result: [] };
         }
 
-        // Имитация проверки: если в запросе есть GROUP BY или JOIN — считаем правильным
         const hasGroupBy = query.toUpperCase().includes("GROUP BY");
         const hasJoin = query.toUpperCase().includes("JOIN");
         const isComplexQuery = hasGroupBy || hasJoin;
@@ -110,7 +109,8 @@ export async function submitSolution(taskId: number, query: string) {
     const res = await fetch(`${API_BASE_URL}/tasks/${taskId}/submit`, {
         method: "POST",
         headers: headers,
-        body: JSON.stringify({ query })
+        // 🔥 ИЗМЕНЕНИЕ 1: Отправляем time_spent на бэкенд
+        body: JSON.stringify({ query, time_spent: timeSpent })
     });
     return res.json();
 }
@@ -130,7 +130,6 @@ export async function getUserProfile() {
     if (!res.ok) throw new Error("Failed to fetch profile");
     const data = await res.json();
 
-    // Преобразуем snake_case в camelCase
     return {
         id: data.id,
         username: data.username,
@@ -240,14 +239,14 @@ export async function getLeaderboard() {
     if (!res.ok) throw new Error("Failed to fetch leaderboard");
     const data = await res.json();
 
-    // Преобразуем snake_case в camelCase для совместимости с фронтендом
+    // 🔥 ИЗМЕНЕНИЕ 2: Заменяем avgTime на totalTimeSpent
     return data.map((entry: any) => ({
         rank: entry.rank,
         username: entry.username,
         avatar: entry.avatar,
         totalPoints: entry.total_points ?? entry.totalPoints ?? 0,
         solvedTasks: entry.solved_tasks ?? entry.solvedTasks ?? 0,
-        avgTime: entry.avg_time ?? entry.avgTime ?? 0,
+        totalTimeSpent: entry.total_time_spent ?? entry.totalTimeSpent ?? 0,
     }));
 }
 
@@ -259,13 +258,8 @@ export function connectLeaderboardWebSocket(onUpdate: (data: any[]) => void) {
 
     if (typeof window === "undefined") return null;
 
-    // 1. Получаем токен из localStorage
     const token = typeof window !== "undefined" ? localStorage.getItem("sql_battle_token") : null;
-
-    // 2. Формируем базовый WS URL (убираем /api, меняем http на ws)
     const wsBaseUrl = API_BASE_URL.replace('http://', 'ws://').replace('/api', '');
-
-    // 3. Добавляем токен в query-параметр, т.к. заголовки в WS не поддерживаются
     const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : "";
     const wsUrl = `${wsBaseUrl}/ws/leaderboard${tokenQuery}`;
 
@@ -293,6 +287,7 @@ export function connectLeaderboardWebSocket(onUpdate: (data: any[]) => void) {
 
     return ws;
 }
+
 // ==========================================
 // 6. УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ И НАЗНАЧЕНИЯМИ
 // ==========================================
@@ -354,6 +349,7 @@ export async function clearAssignment(userId: number) {
     });
     return res.json();
 }
+
 // ==========================================
 // 7. ИСТОРИЯ ПОПЫТОК (ПРОФИЛЬ)
 // ==========================================
