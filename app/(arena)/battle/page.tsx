@@ -253,7 +253,7 @@ export default function BattlePage() {
                                 </TabsContent>
 
                                 <TabsContent value="schema" className="mt-4">
-                                    {task.tables && task.tables.length > 0 ? (
+                                    {task.tables && typeof task.tables === "object" && Object.keys(task.tables).length > 0 ? (
                                         <DatabaseSchema tables={task.tables} />
                                     ) : (
                                         <div className="relative group">
@@ -322,7 +322,7 @@ export default function BattlePage() {
                         </div>
                     )}
 
-                    {result?.type === 'success' && result.data.length > 0 && (
+                    {result?.type === 'success' && result.data && result.data.length > 0 && (
                         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                             <Table>
                                 <TableHeader>

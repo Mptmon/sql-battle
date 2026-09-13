@@ -52,6 +52,16 @@ export default function ArenaLayout({ children }: { children: React.ReactNode })
             const shouldHideTabs = isBetweenStartAndEnd || allTasksCompleted
             setIsTournamentActive(shouldHideTabs)
 
+            //  НОВОЕ: Если турнир завершен и мы на арене — редирект в лобби
+            if (now >= endTime && pathname === "/battle") {
+                toast.info("Турнир завершен", {
+                    description: "Время вышло. Возврат в лобби для просмотра результатов."
+                })
+                localStorage.removeItem("isTournamentActive")
+                router.replace("/lobby")
+                return
+            }
+
             // Блокировка ручного перехода в профиль/лидерборд
             if (shouldHideTabs && (pathname === "/profile" || pathname === "/leaderboard")) {
                 toast.warning("Доступ ограничен", {

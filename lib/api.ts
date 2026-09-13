@@ -70,7 +70,6 @@ export async function executeQuery(taskId: number, query: string) {
     return res.json();
 }
 
-// 🔥 ИЗМЕНЕНИЕ 1: Добавлен параметр timeSpent
 export async function submitSolution(taskId: number, query: string, timeSpent: number) {
     if (USE_MOCKS) {
         await delay(1000);
@@ -109,7 +108,6 @@ export async function submitSolution(taskId: number, query: string, timeSpent: n
     const res = await fetch(`${API_BASE_URL}/tasks/${taskId}/submit`, {
         method: "POST",
         headers: headers,
-        // 🔥 ИЗМЕНЕНИЕ 1: Отправляем time_spent на бэкенд
         body: JSON.stringify({ query, time_spent: timeSpent })
     });
     return res.json();
@@ -239,7 +237,6 @@ export async function getLeaderboard() {
     if (!res.ok) throw new Error("Failed to fetch leaderboard");
     const data = await res.json();
 
-    // 🔥 ИЗМЕНЕНИЕ 2: Заменяем avgTime на totalTimeSpent
     return data.map((entry: any) => ({
         rank: entry.rank,
         username: entry.username,
@@ -258,32 +255,48 @@ export function connectLeaderboardWebSocket(onUpdate: (data: any[]) => void) {
 
     if (typeof window === "undefined") return null;
 
-    const token = typeof window !== "undefined" ? localStorage.getItem("sql_battle_token") : null;
-    const wsBaseUrl = API_BASE_URL.replace('http://', 'ws://').replace('/api', '');
-    const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : "";
-    const wsUrl = `${wsBaseUrl}/ws/leaderboard${tokenQuery}`;
+    const tokenKey = "sql_battle_token";
+    const token = typeof window !== "undefined" ? localStorage.getItem(tokenKey) : null;
 
-    console.log("🔌 Попытка подключения к WebSocket:", wsUrl);
+    if (!token) {
+        console.warn("⚠️ [WS Frontend] Токен не найден, подключение к WebSocket невозможно.");
+        return null;
+    }
+
+    const wsBaseUrl = API_BASE_URL.replace('http://', 'ws://').replace('/api', '');
+    const cleanBaseUrl = wsBaseUrl.replace(/\/+$/, ''); // Убираем возможные двойные слеши
+    const wsUrl = `${cleanBaseUrl}/ws/leaderboard?token=${encodeURIComponent(token)}`;
+
+    console.log("🔌 [WS Frontend] Попытка подключения к:", wsUrl);
+
     const ws = new WebSocket(wsUrl);
 
-    ws.onopen = () => console.log("✅ [WebSocket] Соединение установлено");
+    ws.onopen = () => {
+        console.log("✅ [WebSocket] Соединение успешно установлено (onopen)");
+    };
 
     ws.onmessage = (event) => {
         try {
             const data = JSON.parse(event.data);
             if (data.type === "leaderboard_update") {
+                console.log("📩 [WebSocket] Получены обновленные данные лидерборда");
                 onUpdate(data.data);
             }
         } catch (e) {
-            console.error("Ошибка парсинга WebSocket сообщения", e);
+            console.error("❌ Ошибка парсинга WebSocket сообщения:", e, event.data);
         }
     };
 
     ws.onerror = (error) => {
-        console.error("❌ [WebSocket] Ошибка соединения. Проверьте, что бэкенд запущен и принимает токен в query-параметре.");
+        console.error("❌ [WebSocket] Событие onerror. Детали:", error);
     };
 
-    ws.onclose = () => console.log("🔌 [WebSocket] Соединение закрыто");
+    ws.onclose = (event) => {
+        console.log(`🔌 [WebSocket] Соединение закрыто (onclose). Код: ${event.code}, Причина: ${event.reason || 'Не указана'}`);
+        if (event.code === 1006) {
+            console.warn("⚠️ Код 1006 означает аномальное закрытие. Возможно, бэкенд отклонил соединение после рукопожатия из-за ошибки в коде.");
+        }
+    };
 
     return ws;
 }

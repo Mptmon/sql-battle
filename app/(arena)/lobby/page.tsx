@@ -48,29 +48,26 @@ export default function LobbyPage() {
                 const startDistance = startTime.getTime() - now
                 const endDistance = endTime.getTime() - now
 
-                // 🔥 Проверяем флаг КАЖДУЮ секунду
-                const allTasksCompleted = localStorage.getItem("allTasksCompleted") === "true"
-
                 if (endDistance < 0) {
+                    // Турнир завершен
                     setTimeLeft(0)
                     setPhase('finished')
                     localStorage.removeItem("isTournamentActive")
+                    localStorage.removeItem("allTasksCompleted") // Сбрасываем флаг
                 } else if (startDistance < 0) {
+                    // Турнир идет
                     setTimeLeft(0)
-                    // Если все задачи решены — показываем состояние completed
+                    const allTasksCompleted = localStorage.getItem("allTasksCompleted") === "true"
                     if (allTasksCompleted) {
                         setPhase('completed')
                     } else {
                         setPhase('ready')
                     }
                 } else {
-                    // 🔥 Если турнир еще не начался, но все задачи уже решены (редкий кейс)
-                    if (allTasksCompleted) {
-                        setPhase('completed')
-                    } else {
-                        setTimeLeft(Math.floor(startDistance / 1000))
-                        setPhase('waiting')
-                    }
+                    // Ожидание старта — сбрасываем флаг, так как турнир еще не начался
+                    localStorage.removeItem("allTasksCompleted")
+                    setTimeLeft(Math.floor(startDistance / 1000))
+                    setPhase('waiting')
                 }
             }
 

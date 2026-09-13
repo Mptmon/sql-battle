@@ -323,3 +323,525 @@ location.reload()
 **Шаг 3:** Внести изменения из Части 3 (1 пункт) — чтобы лобби получало реальное время начала и окончания турнира
 
 **Шаг 4 (опционально):** Реализовать автопереключение задач из Части 4 — чтобы турнир работал полностью автоматически, без ручного назначения задач админом
+
+
+📋 Инструкция для бэкенда (для Дани)
+Критические изменения в моделях
+1. Файл backend/api/models.py
+Добавление поля time_spent в модель Submission
+
+class Submission(models.Model):
+    # ... существующие поля ...
+    
+    # ДОБАВИТЬ:
+    time_spent = models.IntegerField(
+        null=True, blank=True, verbose_name="Затраченное время (сек)"
+    )
+
+    После добавления выполнить миграции:
+
+python manage.py makemigrations
+python manage.py migrate
+
+
+Добавление поля battle_end в модель BattleSettings
+
+class BattleSettings(models.Model):
+    from django.utils import timezone
+    from datetime import datetime
+    
+    # ИСПРАВИТЬ battle_start (была строка, должен быть datetime):
+    battle_start = models.DateTimeField(
+        default=timezone.make_aware(datetime(2026, 9, 15, 10, 0, 0)),
+        verbose_name="Начало баттла",
+    )
+    
+    # ДОБАВИТЬ:
+    battle_end = models.DateTimeField(
+        default=timezone.make_aware(datetime(2026, 9, 15, 12, 0, 0)),
+        verbose_name="Конец баттла",
+    )
+    
+    # ИСПРАВИТЬ метод get_settings:
+    @classmethod
+    def get_settings(cls):
+        settings, created = cls.objects.get_or_create(
+            id=1,
+            defaults={"round_duration_minutes": 120}  # Убрать battle_start из defaults
+        )
+        return settings
+
+После изменений выполнить миграции:
+
+python manage.py makemigrations
+python manage.py migrate
+
+
+Изменения в views.py
+1. Функция profile_history_view
+Добавить поле time_spent в ответ:
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def profile_history_view(request):
+    submissions = (
+        Submission.objects.filter(user=request.user)
+        .select_related("task")
+        .order_by("-created_at")
+    )
+
+    history = [
+        {
+            "id": sub.id,
+            "task_title": sub.task.title,
+            "difficulty": sub.task.difficulty,
+            "execution_time": round((sub.execution_time_ms or 0) / 1000, 2),
+            "is_correct": sub.is_correct,
+            "points_earned": sub.points_earned,
+            "time_spent": sub.time_spent or 0,  # ДОБАВИТЬ
+        }
+        for sub in submissions
+    ]
+    return Response(history, status=status.HTTP_200_OK)
+
+2. Функция get_leaderboard_data
+Заменить подсчет времени с execution_time_ms на time_spent:
+
+def get_leaderboard_data():
+    users = User.objects.filter(
+        Q(total_points__gt=0) | Q(role="participant")
+    ).order_by("-total_points")[:50]
+
+    result = []
+    for rank, user in enumerate(users, 1):
+        solved_count = (
+            Submission.objects.filter(user=user, is_correct=True)
+            .values("task_id")
+            .distinct()
+            .count()
+        )
+        
+        # ЗАМЕНИТЬ: было execution_time_ms, стало time_spent
+        total_time_spent = Submission.objects.filter(
+            user=user, is_correct=True, time_spent__isnull=False
+        ).aggregate(total=Sum("time_spent"))["total"]
+
+        total_time_seconds = int(total_time_spent or 0)
+        avatar = user.username[:2].upper() if user.username else "??"
+
+        result.append(
+            {
+                "rank": rank,
+                "username": user.username,
+                "totalPoints": user.total_points,
+                "solvedTasks": solved_count,
+                "total_time_spent": total_time_seconds,
+                "totalTimeSpent": total_time_seconds,
+                "avatar": avatar,
+            }
+        )
+    return result
+
+3. Функции admin_settings_view и public_settings_view
+Изменить права доступа и добавить battle_end
+
+# ИЗМЕНИТЬ декоратор:
+@api_view(["GET", "PUT"])
+@permission_classes([AllowAny])  # Было [IsAdmin]
+def admin_settings_view(request):
+    settings = BattleSettings.get_settings()
+
+    if request.method == "GET":
+        return Response(
+            {
+                "battle_start": (
+                    settings.battle_start.isoformat() if settings.battle_start else None
+                ),
+                "battle_end": (  # ДОБАВИТЬ
+                    settings.battle_end.isoformat() if settings.battle_end else None
+                ),
+                "round_duration_minutes": settings.round_duration_minutes,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    elif request.method == "PUT":
+        if "battle_start" in request.data:
+            settings.battle_start = request.data["battle_start"]
+        if "battle_end" in request.data:  # ДОБАВИТЬ
+            settings.battle_end = request.data["battle_end"]
+        if "round_duration_minutes" in request.data:
+            settings.round_duration_minutes = request.data["round_duration_minutes"]
+        settings.save()
+
+        return Response(
+            {
+                "battle_start": (
+                    settings.battle_start.isoformat() if settings.battle_start else None
+                ),
+                "battle_end": (  # ДОБАВИТЬ
+                    settings.battle_end.isoformat() if settings.battle_end else None
+                ),
+                "round_duration_minutes": settings.round_duration_minutes,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+Аналогично для public_settings_view:
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def public_settings_view(request):
+    settings = BattleSettings.get_settings()
+    return Response(
+        {
+            "battle_start": (
+                settings.battle_start.isoformat() if settings.battle_start else None
+            ),
+            "battle_end": (  # ДОБАВИТЬ
+                settings.battle_end.isoformat() if settings.battle_end else None
+            ),
+            "round_duration_minutes": settings.round_duration_minutes,
+        },
+        status=status.HTTP_200_OK,
+    )
+
+4. Функция submit_solution_view
+Ключевое изменение: сохранять time_spent во всех Submission.objects.create
+Во всех трех местах создания Submission (при ошибке валидации, при ошибке выполнения, при успешном сравнении) добавить параметр time_spent=time_spent:
+
+# Пример для всех трех блоков:
+Submission.objects.create(
+    user=user,
+    task=task,
+    query=query,
+    is_correct=False,  # или is_correct
+    points_earned=0,   # или points_earned
+    execution_time_ms=execution_time_ms,
+    time_spent=time_spent,  # ДОБАВИТЬ ВО ВСЕ ТРИ МЕСТА
+)
+
+Изменение логики completed_at
+ВАЖНО: Помечать задачу завершенной ВСЕГДА при нажатии "Отправить решение", а не только при правильном ответе:
+
+# БЫЛО (неправильно):
+if is_correct:
+    assignment = TaskAssignment.objects.filter(
+        user=user, task=task, completed_at__isnull=True
+    ).first()
+    if assignment:
+        assignment.completed_at = timezone.now()
+        assignment.save(update_fields=["completed_at"])
+
+# СТАЛО (правильно):
+# Отмечаем назначение выполненным ВСЕГДА (независимо от правильности)
+assignment = TaskAssignment.objects.filter(
+    user=user, task=task, completed_at__isnull=True
+).first()
+if assignment:
+    assignment.completed_at = timezone.now()
+    assignment.save(update_fields=["completed_at"])
+
+
+Изменения в utils.py
+Полная замена функции compare_results
+Старая функция падала с ошибкой 'str' object has no attribute 'get' и некорректно сравнивала float-числа.
+
+import json
+
+def compare_results(user_result: List[Dict], expected_result: List[Dict]) -> bool:
+    """
+    Сравнивает результат пользователя с эталонным.
+    Устойчива к типам данных (float vs int), порядку строк и JSON-строкам.
+    """
+    # Страховка: если данные пришли как JSON-строка, парсим их
+    if isinstance(user_result, str):
+        try:
+            user_result = json.loads(user_result)
+        except json.JSONDecodeError:
+            return False
+    if isinstance(expected_result, str):
+        try:
+            expected_result = json.loads(expected_result)
+        except json.JSONDecodeError:
+            return False
+
+    # Базовые проверки
+    if not isinstance(user_result, list) or not isinstance(expected_result, list):
+        return False
+    if len(user_result) != len(expected_result):
+        return False
+    if len(user_result) == 0:
+        return True
+
+    # Нормализация одной строки (словаря)
+    def normalize_row(row):
+        normalized = {}
+        for k, v in row.items():
+            if v is None:
+                normalized[k] = None
+            elif isinstance(v, float):
+                normalized[k] = round(v, 4)  # Округляем float
+            elif isinstance(v, str):
+                normalized[k] = v.strip().lower()  # Нормализуем строки
+            else:
+                normalized[k] = v
+        return tuple(sorted(normalized.items()))
+
+    # Сортируем строки и сравниваем
+    user_sorted = sorted([normalize_row(row) for row in user_result])
+    expected_sorted = sorted([normalize_row(row) for row in expected_result])
+
+    return user_sorted == expected_sorted
+
+Изменения в serializers.py (рекомендуется)
+Добавление to_representation в TaskDetailSerializer
+Чтобы гарантировать, что JSON-поля всегда возвращаются как объекты, а не строки:
+
+import json
+
+class TaskDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Task
+        fields = '__all__'
+    
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # Преобразуем строки в JSON, если нужно
+        if isinstance(data.get('tables'), str):
+            try:
+                data['tables'] = json.loads(data['tables'])
+            except json.JSONDecodeError:
+                pass
+        if isinstance(data.get('expected_result'), str):
+            try:
+                data['expected_result'] = json.loads(data['expected_result'])
+            except json.JSONDecodeError:
+                pass
+        return data
+
+Настройка WebSocket
+1. Установка зависимостей
+
+pip install "uvicorn[standard]"
+
+2. Файл backend/api/middleware.py
+
+from urllib.parse import parse_qs
+from channels.db import database_sync_to_async
+from channels.middleware import BaseMiddleware
+from django.contrib.auth.models import AnonymousUser
+from rest_framework_simplejwt.tokens import AccessToken
+from .models import User
+
+
+@database_sync_to_async
+def get_user_from_token(token_str):
+    """Получает пользователя из JWT-токена"""
+    try:
+        token = AccessToken(token_str)
+        user_id = token['user_id']
+        user = User.objects.get(id=user_id)
+        return user
+    except Exception:
+        return AnonymousUser()
+
+
+class QueryAuthMiddleware(BaseMiddleware):
+    """
+    Middleware для аутентификации WebSocket через query-параметр ?token=...
+    """
+
+    async def __call__(self, scope, receive, send):
+        query_string = scope.get('query_string', b'').decode('utf-8')
+        query_params = parse_qs(query_string)
+
+        token_list = query_params.get('token', [])
+        token_str = token_list[0] if token_list else None
+
+        if token_str:
+            scope['user'] = await get_user_from_token(token_str)
+        else:
+            scope['user'] = AnonymousUser()
+
+        return await super().__call__(scope, receive, send)
+
+3. Файл backend/api/consumers.py
+
+import json
+from channels.generic.websocket import AsyncWebsocketConsumer
+from channels.db import database_sync_to_async
+from django.db.models import Sum, Q
+
+
+class LeaderboardConsumer(AsyncWebsocketConsumer):
+    """WebSocket consumer для реалтайм-обновлений лидерборда"""
+
+    async def connect(self):
+        self.group_name = 'leaderboard'
+        
+        user = self.scope.get('user')
+        is_auth = getattr(user, 'is_authenticated', False)
+
+        if not user or not is_auth:
+            await self.close(code=4001)
+            return
+
+        await self.channel_layer.group_add(
+            self.group_name,
+            self.channel_name
+        )
+        await self.accept()
+
+        # Отправляем текущий лидерборд при подключении
+        leaderboard_data = await self.get_leaderboard()
+        await self.send(text_data=json.dumps({
+            'type': 'leaderboard_update',
+            'data': leaderboard_data
+        }))
+
+    async def disconnect(self, close_code):
+        await self.channel_layer.group_discard(
+            self.group_name,
+            self.channel_name
+        )
+
+    async def receive(self, text_data):
+        pass
+
+    async def leaderboard_update(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'leaderboard_update',
+            'data': event['data']
+        }))
+
+    @database_sync_to_async
+    def get_leaderboard(self):
+        from .models import User, Submission
+
+        users = User.objects.filter(
+            Q(total_points__gt=0) | Q(role='participant')
+        ).order_by('-total_points')[:50]
+
+        result = []
+        for rank, user in enumerate(users, 1):
+            solved_count = Submission.objects.filter(
+                user=user, is_correct=True
+            ).values('task_id').distinct().count()
+
+            total_time_spent = Submission.objects.filter(
+                user=user, is_correct=True, time_spent__isnull=False
+            ).aggregate(total=Sum('time_spent'))['total']
+
+            total_time_seconds = int(total_time_spent or 0)
+            avatar = user.username[:2].upper() if user.username else '??'
+
+            result.append({
+                'rank': rank,
+                'username': user.username,
+                'totalPoints': user.total_points,
+                'solvedTasks': solved_count,
+                'total_time_spent': total_time_seconds,
+                'totalTimeSpent': total_time_seconds,
+                'avatar': avatar
+            })
+
+        return result
+
+4. Файл backend/api/routing.py
+
+from django.urls import re_path
+from . import consumers
+
+websocket_urlpatterns = [
+    re_path(r'ws/leaderboard/?$', consumers.LeaderboardConsumer.as_asgi()),
+]
+
+
+5. Файл backend/sql_battle/asgi.py
+
+import os
+from django.core.asgi import get_asgi_application
+from channels.routing import ProtocolTypeRouter, URLRouter
+from api.routing import websocket_urlpatterns
+from api.middleware import QueryAuthMiddleware
+
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'sql_battle.settings')
+
+django_asgi_app = get_asgi_application()
+
+application = ProtocolTypeRouter({
+    'http': django_asgi_app,
+    'websocket': QueryAuthMiddleware(URLRouter(websocket_urlpatterns)),
+})
+
+6. Файл backend/sql_battle/settings.py
+Добавить в конец файла:
+
+# Channels
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels.layers.InMemoryChannelLayer',
+    }
+}
+
+Убедиться, что 'channels' добавлен в INSTALLED_APPS:
+
+INSTALLED_APPS = [
+    # ... существующие приложения ...
+    'channels',
+    'api',
+]
+
+
+Запуск сервера
+После всех изменений сервер нужно запускать через uvicorn (не через python manage.py runserver):
+
+uvicorn sql_battle.asgi:application --reload --host 0.0.0.0 --port 8000
+
+Формат данных в админке
+Поле "Структура таблиц с примерами"
+Должно быть в формате списка словарей (не объекта!):
+
+[
+  {
+    "name": "users",
+    "columns": [
+      {"name": "id"},
+      {"name": "username"},
+      {"name": "email"}
+    ],
+    "sampleData": [
+      {"id": 1, "username": "alice", "email": "alice@example.com"},
+      {"id": 2, "username": "bob", "email": "bob@example.com"}
+    ]
+  }
+]
+
+Ключевые моменты:
+Это список [...], а не объект {...}
+Каждый элемент имеет ключи: name, columns, sampleData
+columns — список словарей с ключом name
+sampleData — список словарей с данными
+
+Чек-лист для Дани
+Добавить time_spent в модель Submission и выполнить миграции
+Добавить battle_end в модель BattleSettings и выполнить миграции
+Исправить default для battle_start (строка → datetime)
+Исправить get_settings() (убрать строку из defaults)
+Добавить time_spent в profile_history_view
+Заменить execution_time_ms на time_spent в get_leaderboard_data()
+Добавить battle_end в admin_settings_view и public_settings_view
+Изменить права admin_settings_view на AllowAny
+Добавить time_spent=time_spent во все Submission.objects.create в submit_solution_view
+Изменить логику completed_at: ставить всегда, а не только при is_correct=True
+Заменить функцию compare_results в utils.py
+Добавить to_representation в TaskDetailSerializer (рекомендуется)
+Настроить WebSocket: middleware.py, consumers.py, routing.py, asgi.py
+Добавить 'channels' в INSTALLED_APPS и CHANNEL_LAYERS в settings.py
+Установить uvicorn[standard]
+Запускать сервер через uvicorn sql_battle.asgi:application --reload
+Проверить формат JSON в поле "Структура таблиц с примерами" в админке
+
+
