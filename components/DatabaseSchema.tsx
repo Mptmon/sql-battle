@@ -29,7 +29,7 @@ export default function DatabaseSchema({ tables }: DatabaseSchemaProps) {
     const currentTable = tables.find(t => t.name === selectedTable)
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-4 max-h-[calc(100vh-300px)] overflow-y-auto custom-scrollbar">
             <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm font-semibold text-zinc-400 uppercase">
                     <Database className="h-4 w-4" />
@@ -78,7 +78,7 @@ export default function DatabaseSchema({ tables }: DatabaseSchemaProps) {
                                 <Columns className="h-3 w-3" />
                                 Колонки ({currentTable.columns.length})
                             </div>
-                            <div className="grid gap-1">
+                            <div className="grid gap-1 max-h-[200px] overflow-y-auto custom-scrollbar">
                                 {currentTable.columns.map((col) => (
                                     <div
                                         key={col.name}
@@ -98,12 +98,12 @@ export default function DatabaseSchema({ tables }: DatabaseSchemaProps) {
                                 <div className="text-xs font-semibold text-zinc-500 uppercase">
                                     Примеры данных (первые {Math.min(3, currentTable.sampleData.length)} строки)
                                 </div>
-                                <div className="overflow-x-auto">
+                                <div className="overflow-x-auto max-h-[300px] overflow-y-auto custom-scrollbar">
                                     <Table>
                                         <TableHeader>
                                             <TableRow className="border-zinc-800 hover:bg-transparent">
                                                 {currentTable.columns.map((col) => (
-                                                    <TableHead key={col.name} className="text-zinc-400 font-mono text-xs">
+                                                    <TableHead key={col.name} className="text-zinc-400 font-mono text-xs whitespace-nowrap">
                                                         {col.name}
                                                     </TableHead>
                                                 ))}
@@ -113,7 +113,7 @@ export default function DatabaseSchema({ tables }: DatabaseSchemaProps) {
                                             {currentTable.sampleData.slice(0, 3).map((row, idx) => (
                                                 <TableRow key={idx} className="border-zinc-800 hover:bg-zinc-800/50">
                                                     {currentTable.columns.map((col) => (
-                                                        <TableCell key={col.name} className="font-mono text-xs text-zinc-300">
+                                                        <TableCell key={col.name} className="font-mono text-xs text-zinc-300 whitespace-nowrap">
                                                             {String(row[col.name])}
                                                         </TableCell>
                                                     ))}
