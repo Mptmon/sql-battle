@@ -229,10 +229,10 @@ export default function BattlePage() {
     }
 
     return (
-        <div className="h-[calc(100vh-80px)] flex flex-col gap-4">
+        <div className="h-[calc(100vh-80px)] flex flex-col gap-4 overflow-hidden">
             <div className="flex-1 flex flex-col md:flex-row gap-4 min-h-0">
-                <div className="w-full md:w-2/5 flex flex-col">
-                    <Card className="bg-zinc-900 border-zinc-800 flex-1 flex flex-col min-h-[500px] transition-all duration-300 hover:border-zinc-700">
+                <div className="w-full md:w-2/5 flex flex-col min-h-0 h-full">
+                    <Card className="bg-zinc-900 border-zinc-800 flex-1 flex flex-col h-full min-h-0 transition-all duration-300 hover:border-zinc-700">
                         <CardHeader className="border-b border-zinc-800 pb-3">
                             <div className="flex justify-between items-start gap-2">
                                 <CardTitle className="text-emerald-400 text-lg leading-tight">Задача #{task.id}: {task.title}</CardTitle>
@@ -301,7 +301,7 @@ export default function BattlePage() {
                 </div>
             </div>
 
-            <div className="h-1/3 min-h-[200px] bg-zinc-900 border border-zinc-800 rounded-lg flex flex-col transition-all duration-300 hover:border-zinc-700 overflow-y-auto">
+            <div className="h-[35%] min-h-[200px] max-h-[40vh] bg-zinc-900 border border-zinc-800 rounded-lg flex flex-col transition-all duration-300 hover:border-zinc-700 overflow-hidden">
                 <div className="px-4 py-2 border-b border-zinc-800 bg-zinc-900/50 rounded-t-lg flex items-center gap-2">
                     <Database className="h-4 w-4 text-zinc-500" />
                     <h3 className="text-sm font-semibold text-zinc-400 uppercase">Результат выполнения</h3>
