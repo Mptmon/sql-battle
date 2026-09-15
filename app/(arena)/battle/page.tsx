@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -25,17 +25,72 @@ export default function BattlePage() {
     const [timeLeft, setTimeLeft] = useState(300)
     const [currentTaskId, setCurrentTaskId] = useState<number | null>(null)
 
+    // 🔥 Ref-переменные для синхронной и мгновенной блокировки
+    const isHandlingTimeoutRef = useRef(false)
+    const intervalRef = useRef<NodeJS.Timeout | null>(null)
+
+    // Ref-переменные для доступа к актуальным данным внутри setInterval
+    const currentTaskIdRef = useRef<number | null>(null)
+    const sqlQueryRef = useRef<string>("")
+
+    // Синхронизируем ref с состоянием при каждом изменении
+    useEffect(() => { currentTaskIdRef.current = currentTaskId }, [currentTaskId])
+    useEffect(() => { sqlQueryRef.current = sqlQuery }, [sqlQuery])
+
+    // 🔥 Функция для безопасного запуска интервала
+    const startTimerInterval = () => {
+        // Сначала очищаем старый, если он есть
+        if (intervalRef.current) {
+            clearInterval(intervalRef.current)
+        }
+
+        const checkTime = () => {
+            const startTimeStr = localStorage.getItem("battle_start_time")
+            const durationStr = localStorage.getItem("battle_duration")
+
+            if (startTimeStr && durationStr) {
+                const startTime = parseInt(startTimeStr, 10)
+                const duration = parseInt(durationStr, 10)
+                const elapsed = Math.floor((Date.now() - startTime) / 1000)
+                const remaining = duration - elapsed
+
+                // 🔥 ПРОВЕРКА: Если время вышло И мы еще не начали обработку таймаута
+                if (remaining <= 0 && !isHandlingTimeoutRef.current) {
+                    isHandlingTimeoutRef.current = true // Синхронная блокировка
+
+                    setIsTimeUp(true)
+                    setTimeLeft(0)
+
+                    // 🔥 НЕМЕДЛЕННО останавливаем интервал, чтобы он не спамил пока идет await
+                    if (intervalRef.current) {
+                        clearInterval(intervalRef.current)
+                        intervalRef.current = null
+                    }
+
+                    handleTimeUp()
+                } else if (remaining > 0) {
+                    setIsTimeUp(false)
+                    setTimeLeft(remaining)
+                }
+            }
+        }
+
+        checkTime() // Проверяем сразу при запуске
+        intervalRef.current = setInterval(checkTime, 1000)
+    }
+
     const resetTimer = () => {
         localStorage.setItem("battle_start_time", Date.now().toString())
         localStorage.setItem("battle_duration", "300")
         setIsTimeUp(false)
         setTimeLeft(300)
         console.log("🔥 Таймер сброшен:", Date.now().toString())
+        // Перезапускаем интервал с новыми данными
+        startTimerInterval()
     }
 
     useEffect(() => {
         async function loadCurrentTask() {
-            // 🔥 ПРОВЕРКА: если турнир не активен, редиректим в лобби
             const isTournamentActive = localStorage.getItem("isTournamentActive") === "true"
             if (!isTournamentActive) {
                 toast.warning("Турнир ещё не начался", {
@@ -51,11 +106,11 @@ export default function BattlePage() {
                     const fullTask = await getTaskById(assigned.id)
                     setTask(fullTask)
                     setCurrentTaskId(fullTask.id)
-                    resetTimer()
+                    resetTimer() // Это вызовет startTimerInterval()
                 } else {
                     toast.info("Все задачи решены!", { description: "Ожидайте окончания турнира." })
                     localStorage.removeItem("isTournamentActive")
-                    localStorage.setItem("allTasksCompleted", "true") // 🔥 ДОБАВЛЕНО
+                    localStorage.setItem("allTasksCompleted", "true")
                     router.push("/lobby")
                 }
             } catch (error) {
@@ -66,31 +121,12 @@ export default function BattlePage() {
 
         loadCurrentTask()
 
-        const checkTime = () => {
-            const startTimeStr = localStorage.getItem("battle_start_time")
-            const durationStr = localStorage.getItem("battle_duration")
-
-            if (startTimeStr && durationStr) {
-                const startTime = parseInt(startTimeStr, 10)
-                const duration = parseInt(durationStr, 10)
-                const elapsed = Math.floor((Date.now() - startTime) / 1000)
-                const remaining = duration - elapsed
-
-                if (remaining <= 0) {
-                    setIsTimeUp(true)
-                    setTimeLeft(0)
-                    handleTimeUp()
-                } else {
-                    setIsTimeUp(false)
-                    setTimeLeft(remaining)
-                }
+        // Очистка интервала при размонтировании компонента
+        return () => {
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current)
             }
         }
-
-        checkTime()
-        const interval = setInterval(checkTime, 1000)
-
-        return () => clearInterval(interval)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
@@ -153,7 +189,7 @@ export default function BattlePage() {
             } else {
                 toast.info("Все задачи решены!", { description: "Ожидайте окончания турнира." })
                 localStorage.removeItem("isTournamentActive")
-                localStorage.setItem("allTasksCompleted", "true") // 🔥 ДОБАВЛЕНО
+                localStorage.setItem("allTasksCompleted", "true")
                 router.push("/lobby")
                 return
             }
@@ -165,7 +201,7 @@ export default function BattlePage() {
     }
 
     const handleTimeUp = async () => {
-        console.log("⏰ Время вышло! Переход к следующей задаче...")
+        console.log("⏰ Время вышло! Фиксируем попытку и переход к следующей задаче...")
 
         setIsNextTaskLoading(true)
         setResult(null)
@@ -173,6 +209,23 @@ export default function BattlePage() {
         setSqlQuery("")
 
         try {
+            const duration = parseInt(localStorage.getItem("battle_duration") || "300", 10)
+
+            const taskId = currentTaskIdRef.current
+            const query = sqlQueryRef.current || "-- Время истекло"
+
+            if (taskId) {
+                try {
+                    console.log(`📤 Отправка таймаута для задачи ${taskId} с временем ${duration}с`)
+                    await submitSolution(taskId, query, duration)
+                    console.log(`✅ Зафиксирована попытка с истекшим временем (${duration} сек)`)
+                } catch (e) {
+                    console.error(" Не удалось зафиксировать истечение времени в БД:", e)
+                }
+            } else {
+                console.warn("⚠️ currentTaskId отсутствует, не могу зафиксировать таймаут")
+            }
+
             await new Promise(resolve => setTimeout(resolve, 1500))
 
             const nextAssigned = await getAssignedTask()
@@ -180,15 +233,15 @@ export default function BattlePage() {
             if (nextAssigned) {
                 console.log(" Следующая задача после истечения времени:", nextAssigned)
                 const fullTask = await getTaskById(nextAssigned.id)
-                console.log("📋 Полная информация:", fullTask)
+                console.log(" Полная информация:", fullTask)
                 setTask(fullTask)
                 setCurrentTaskId(fullTask.id)
-                resetTimer()
+                resetTimer() // Это перезапустит интервал для новой задачи
                 toast.info("Время вышло! Переход к следующей задаче.", { duration: 3000 })
             } else {
                 toast.info("Время вышло! Все задачи завершены.", { description: "Ожидайте окончания турнира." })
                 localStorage.removeItem("isTournamentActive")
-                localStorage.setItem("allTasksCompleted", "true") // 🔥 ДОБАВЛЕНО
+                localStorage.setItem("allTasksCompleted", "true")
                 router.push("/lobby")
                 return
             }
@@ -196,14 +249,17 @@ export default function BattlePage() {
             console.error("Ошибка при переходе к следующей задаче:", error)
             toast.error("Ошибка при загрузке следующей задачи")
         } finally {
+            // 🔥 Снимаем блокировку и гарантированно перезапускаем таймер для следующей задачи
+            isHandlingTimeoutRef.current = false
             setIsNextTaskLoading(false)
+            startTimerInterval()
         }
     }
 
     const handleExitToLobby = () => {
         localStorage.removeItem("battle_start_time")
         localStorage.removeItem("battle_duration")
-        localStorage.removeItem("isTournamentActive") // 🔥 ДОБАВЛЯЕМ СЮДА ДЛЯ ПОЛНОЙ ЧИСТОТЫ
+        localStorage.removeItem("isTournamentActive")
         setExpectedResult(null)
         toast.info("Возврат в лобби", { description: "Ожидание новой задачи..." })
         router.push("/lobby")
@@ -229,47 +285,50 @@ export default function BattlePage() {
     }
 
     return (
-        <div className="h-[calc(100vh-80px)] flex flex-col gap-4 overflow-hidden">
-            <div className="flex-1 flex flex-col md:flex-row gap-4 min-h-0">
-                <div className="w-full md:w-2/5 flex flex-col min-h-0 h-full">
-                    <Card className="bg-zinc-900 border-zinc-800 flex-1 flex flex-col h-full min-h-0 transition-all duration-300 hover:border-zinc-700">
-                        <CardHeader className="border-b border-zinc-800 pb-3">
-                            <div className="flex justify-between items-start gap-2">
-                                <CardTitle className="text-emerald-400 text-lg leading-tight">Задача #{task.id}: {task.title}</CardTitle>
-                                <Badge variant="outline" className="border-yellow-500/50 text-yellow-400 bg-yellow-500/10 shrink-0">
-                                    {task.points} баллов
-                                </Badge>
-                            </div>
-                        </CardHeader>
-                        <CardContent className="pt-4 flex-1 overflow-y-auto custom-scrollbar">
-                            <Tabs defaultValue="task" className="w-full">
-                                <TabsList className="bg-zinc-800 w-full justify-start">
-                                    <TabsTrigger value="task" className="flex-1 data-[state=active]:bg-zinc-700">Условие</TabsTrigger>
-                                    <TabsTrigger value="schema" className="flex-1 data-[state=active]:bg-zinc-700">Схема БД</TabsTrigger>
-                                </TabsList>
+        <div className="h-[calc(100vh-80px)] flex flex-row gap-4 overflow-hidden">
+            {/* ЛЕВАЯ ПАНЕЛЬ - Условие и схема БД (на всю высоту) */}
+            <div className="w-1/3 min-w-[350px] h-full flex flex-col">
+                <Card className="bg-zinc-900 border-zinc-800 flex-1 flex flex-col h-full min-h-0 transition-all duration-300 hover:border-zinc-700">
+                    <CardHeader className="border-b border-zinc-800 pb-3 shrink-0">
+                        <div className="flex justify-between items-start gap-2">
+                            <CardTitle className="text-emerald-400 text-lg leading-tight">Задача #{task.id}: {task.title}</CardTitle>
+                            <Badge variant="outline" className="border-yellow-500/50 text-yellow-400 bg-yellow-500/10 shrink-0">
+                                {task.points} баллов
+                            </Badge>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="pt-4 flex-1 overflow-y-auto custom-scrollbar">
+                        <Tabs defaultValue="task" className="w-full">
+                            <TabsList className="bg-zinc-800 w-full justify-start">
+                                <TabsTrigger value="task" className="flex-1 data-[state=active]:bg-zinc-700">Условие</TabsTrigger>
+                                <TabsTrigger value="schema" className="flex-1 data-[state=active]:bg-zinc-700">Схема БД</TabsTrigger>
+                            </TabsList>
 
-                                <TabsContent value="task" className="mt-4 text-zinc-300 space-y-3 text-sm leading-relaxed">
-                                    <p>{task.description}</p>
-                                </TabsContent>
+                            <TabsContent value="task" className="mt-4 text-zinc-300 space-y-3 text-sm leading-relaxed">
+                                <p>{task.description}</p>
+                            </TabsContent>
 
-                                <TabsContent value="schema" className="mt-4">
-                                    {task.tables && typeof task.tables === "object" && Object.keys(task.tables).length > 0 ? (
-                                        <DatabaseSchema tables={task.tables} />
-                                    ) : (
-                                        <div className="relative group">
-                                            <pre className="bg-zinc-950 p-4 rounded-lg border border-zinc-800 text-xs text-emerald-300 overflow-x-auto font-mono transition-colors group-hover:border-emerald-500/30">
-                                                {task.schema}
-                                            </pre>
-                                        </div>
-                                    )}
-                                </TabsContent>
-                            </Tabs>
-                        </CardContent>
-                    </Card>
-                </div>
+                            <TabsContent value="schema" className="mt-4">
+                                {task.tables && typeof task.tables === "object" && Object.keys(task.tables).length > 0 ? (
+                                    <DatabaseSchema tables={task.tables} />
+                                ) : (
+                                    <div className="relative group">
+                                        <pre className="bg-zinc-950 p-4 rounded-lg border border-zinc-800 text-xs text-emerald-300 overflow-x-auto font-mono transition-colors group-hover:border-emerald-500/30">
+                                            {task.schema}
+                                        </pre>
+                                    </div>
+                                )}
+                            </TabsContent>
+                        </Tabs>
+                    </CardContent>
+                </Card>
+            </div>
 
-                <div className="w-full md:w-3/5 flex flex-col">
-                    <div className="flex justify-between items-center mb-2">
+            {/* ПРАВАЯ ЧАСТЬ - Редактор и результаты */}
+            <div className="flex-1 flex flex-col gap-4 min-h-0">
+                {/* SQL Editor */}
+                <div className="flex-1 min-h-[300px] flex flex-col">
+                    <div className="flex justify-between items-center mb-2 shrink-0">
                         <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
                             <Database className="h-4 w-4" /> SQL Editor
                         </h2>
@@ -291,91 +350,90 @@ export default function BattlePage() {
                                 <CheckCircle2 className="mr-2 h-4 w-4" />
                                 Отправить решение
                             </Button>
-
                         </div>
                     </div>
-
                     <div className="flex-1 min-h-0 transition-all duration-300">
                         <SqlEditor value={sqlQuery} onChange={setSqlQuery} />
                     </div>
                 </div>
-            </div>
 
-            <div className="h-[35%] min-h-[200px] max-h-[40vh] bg-zinc-900 border border-zinc-800 rounded-lg flex flex-col transition-all duration-300 hover:border-zinc-700 overflow-hidden">
-                <div className="px-4 py-2 border-b border-zinc-800 bg-zinc-900/50 rounded-t-lg flex items-center gap-2">
-                    <Database className="h-4 w-4 text-zinc-500" />
-                    <h3 className="text-sm font-semibold text-zinc-400 uppercase">Результат выполнения</h3>
-                </div>
+                {/* Результаты выполнения */}
+                <div className="h-[40%] min-h-[250px] bg-zinc-900 border border-zinc-800 rounded-lg flex flex-col transition-all duration-300 hover:border-zinc-700 overflow-hidden">
+                    <div className="px-4 py-2 border-b border-zinc-800 bg-zinc-900/50 rounded-t-lg flex items-center gap-2 shrink-0">
+                        <Database className="h-4 w-4 text-zinc-500" />
+                        <h3 className="text-sm font-semibold text-zinc-400 uppercase">Результат выполнения</h3>
+                    </div>
 
-                <div className="flex-1 overflow-auto p-4">
-                    {!result && !expectedResult && (
-                        <div className="h-full flex flex-col items-center justify-center text-zinc-600 gap-3">
-                            <Database className="h-8 w-8 opacity-20" />
-                            <p className="text-sm">Нажмите "Выполнить", чтобы увидеть результат запроса</p>
-                        </div>
-                    )}
-
-                    {result?.type === 'error' && (
-                        <div className="bg-red-950/20 border border-red-900/50 text-red-400 p-4 rounded-lg font-mono text-sm whitespace-pre-wrap flex gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
-                            <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
-                            <span>{result.message}</span>
-                        </div>
-                    )}
-
-                    {result?.type === 'success' && result.data && result.data.length > 0 && (
-                        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow className="border-zinc-800 hover:bg-transparent">
-                                        {Object.keys(result.data[0]).map((key) => (
-                                            <TableHead key={key} className="text-zinc-400 font-mono uppercase text-xs">{key}</TableHead>
-                                        ))}
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {result.data.map((row, idx) => (
-                                        <TableRow key={idx} className="border-zinc-800 hover:bg-zinc-800/50 transition-colors">
-                                            {Object.values(row).map((val: any, i) => (
-                                                <TableCell key={i} className="font-mono text-zinc-300">{val}</TableCell>
-                                            ))}
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </div>
-                    )}
-
-                    {expectedResult && expectedResult.length > 0 && (
-                        <div className="mt-6 pt-6 border-t border-zinc-800 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                            <div className="flex items-center gap-2 mb-3">
-                                <CheckCircle2 className="h-5 w-5 text-emerald-400" />
-                                <h4 className="text-sm font-semibold text-emerald-400 uppercase">Эталонный результат</h4>
+                    <div className="flex-1 overflow-auto p-4">
+                        {!result && !expectedResult && (
+                            <div className="h-full flex flex-col items-center justify-center text-zinc-600 gap-3">
+                                <Database className="h-8 w-8 opacity-20" />
+                                <p className="text-sm">Нажмите "Выполнить", чтобы увидеть результат запроса</p>
                             </div>
-                            <div className="bg-emerald-950/20 border border-emerald-900/50 rounded-lg p-4">
+                        )}
+
+                        {result?.type === 'error' && (
+                            <div className="bg-red-950/20 border border-red-900/50 text-red-400 p-4 rounded-lg font-mono text-sm whitespace-pre-wrap flex gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                                <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+                                <span>{result.message}</span>
+                            </div>
+                        )}
+
+                        {result?.type === 'success' && result.data && result.data.length > 0 && (
+                            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                                 <Table>
                                     <TableHeader>
-                                        <TableRow className="border-emerald-900/50 hover:bg-transparent">
-                                            {Object.keys(expectedResult[0]).map((key) => (
-                                                <TableHead key={key} className="text-emerald-400 font-mono uppercase text-xs">{key}</TableHead>
+                                        <TableRow className="border-zinc-800 hover:bg-transparent">
+                                            {Object.keys(result.data[0]).map((key) => (
+                                                <TableHead key={key} className="text-zinc-400 font-mono uppercase text-xs">{key}</TableHead>
                                             ))}
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {expectedResult.map((row, idx) => (
-                                            <TableRow key={idx} className="border-emerald-900/50 hover:bg-emerald-900/20">
+                                        {result.data.map((row, idx) => (
+                                            <TableRow key={idx} className="border-zinc-800 hover:bg-zinc-800/50 transition-colors">
                                                 {Object.values(row).map((val: any, i) => (
-                                                    <TableCell key={i} className="font-mono text-emerald-300">{val}</TableCell>
+                                                    <TableCell key={i} className="font-mono text-zinc-300">{val}</TableCell>
                                                 ))}
                                             </TableRow>
                                         ))}
                                     </TableBody>
                                 </Table>
                             </div>
-                            <p className="text-xs text-zinc-500 mt-2">
-                                💡 Сравните ваш результат с эталонным. Порядок строк может отличаться.
-                            </p>
-                        </div>
-                    )}
+                        )}
+
+                        {expectedResult && expectedResult.length > 0 && (
+                            <div className="mt-6 pt-6 border-t border-zinc-800 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+                                    <h4 className="text-sm font-semibold text-emerald-400 uppercase">Эталонный результат</h4>
+                                </div>
+                                <div className="bg-emerald-950/20 border border-emerald-900/50 rounded-lg p-4">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow className="border-emerald-900/50 hover:bg-transparent">
+                                                {Object.keys(expectedResult[0]).map((key) => (
+                                                    <TableHead key={key} className="text-emerald-400 font-mono uppercase text-xs">{key}</TableHead>
+                                                ))}
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {expectedResult.map((row, idx) => (
+                                                <TableRow key={idx} className="border-emerald-900/50 hover:bg-emerald-900/20">
+                                                    {Object.values(row).map((val: any, i) => (
+                                                        <TableCell key={i} className="font-mono text-emerald-300">{val}</TableCell>
+                                                    ))}
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                                <p className="text-xs text-zinc-500 mt-2">
+                                    💡 Сравните ваш результат с эталонным. Порядок строк может отличаться.
+                                </p>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>
