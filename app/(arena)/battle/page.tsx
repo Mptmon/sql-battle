@@ -25,21 +25,19 @@ export default function BattlePage() {
     const [timeLeft, setTimeLeft] = useState(300)
     const [currentTaskId, setCurrentTaskId] = useState<number | null>(null)
 
-    // 🔥 Ref-переменные для синхронной и мгновенной блокировки
+    // Ref для синхронной блокировки повторных вызовов таймаута
     const isHandlingTimeoutRef = useRef(false)
     const intervalRef = useRef<NodeJS.Timeout | null>(null)
+    // Ref для предотвращения перезапуска таймера после перехода в лобби
+    const shouldRestartTimerRef = useRef(true)
 
-    // Ref-переменные для доступа к актуальным данным внутри setInterval
     const currentTaskIdRef = useRef<number | null>(null)
     const sqlQueryRef = useRef<string>("")
 
-    // Синхронизируем ref с состоянием при каждом изменении
     useEffect(() => { currentTaskIdRef.current = currentTaskId }, [currentTaskId])
     useEffect(() => { sqlQueryRef.current = sqlQuery }, [sqlQuery])
 
-    // 🔥 Функция для безопасного запуска интервала
     const startTimerInterval = () => {
-        // Сначала очищаем старый, если он есть
         if (intervalRef.current) {
             clearInterval(intervalRef.current)
         }
@@ -54,14 +52,12 @@ export default function BattlePage() {
                 const elapsed = Math.floor((Date.now() - startTime) / 1000)
                 const remaining = duration - elapsed
 
-                // 🔥 ПРОВЕРКА: Если время вышло И мы еще не начали обработку таймаута
                 if (remaining <= 0 && !isHandlingTimeoutRef.current) {
-                    isHandlingTimeoutRef.current = true // Синхронная блокировка
+                    isHandlingTimeoutRef.current = true
 
                     setIsTimeUp(true)
                     setTimeLeft(0)
 
-                    // 🔥 НЕМЕДЛЕННО останавливаем интервал, чтобы он не спамил пока идет await
                     if (intervalRef.current) {
                         clearInterval(intervalRef.current)
                         intervalRef.current = null
@@ -75,17 +71,39 @@ export default function BattlePage() {
             }
         }
 
-        checkTime() // Проверяем сразу при запуске
+        checkTime()
         intervalRef.current = setInterval(checkTime, 1000)
     }
 
+    // Вызывается при ПЕРВОЙ загрузке страницы - восстанавливает таймер из localStorage
+    const initTimer = () => {
+        const existingStartTime = localStorage.getItem("battle_start_time")
+        const duration = parseInt(localStorage.getItem("battle_duration") || "300", 10)
+
+        if (!existingStartTime) {
+            localStorage.setItem("battle_start_time", Date.now().toString())
+            localStorage.setItem("battle_duration", duration.toString())
+            console.log(" Таймер инициализирован:", Date.now().toString())
+            setTimeLeft(duration)
+        } else {
+            console.log("🔥 Таймер восстановлен из localStorage:", existingStartTime)
+            const startTime = parseInt(existingStartTime, 10)
+            const elapsed = Math.floor((Date.now() - startTime) / 1000)
+            const remaining = Math.max(0, duration - elapsed)
+            setTimeLeft(remaining)
+        }
+
+        setIsTimeUp(false)
+        startTimerInterval()
+    }
+
+    // Вызывается при переходе к НОВОЙ задаче - всегда сбрасывает таймер
     const resetTimer = () => {
         localStorage.setItem("battle_start_time", Date.now().toString())
         localStorage.setItem("battle_duration", "300")
         setIsTimeUp(false)
         setTimeLeft(300)
-        console.log("🔥 Таймер сброшен:", Date.now().toString())
-        // Перезапускаем интервал с новыми данными
+        console.log("🔥 Таймер сброшен для новой задачи:", Date.now().toString())
         startTimerInterval()
     }
 
@@ -106,7 +124,7 @@ export default function BattlePage() {
                     const fullTask = await getTaskById(assigned.id)
                     setTask(fullTask)
                     setCurrentTaskId(fullTask.id)
-                    resetTimer() // Это вызовет startTimerInterval()
+                    initTimer()
                 } else {
                     toast.info("Все задачи решены!", { description: "Ожидайте окончания турнира." })
                     localStorage.removeItem("isTournamentActive")
@@ -121,13 +139,11 @@ export default function BattlePage() {
 
         loadCurrentTask()
 
-        // Очистка интервала при размонтировании компонента
         return () => {
             if (intervalRef.current) {
                 clearInterval(intervalRef.current)
             }
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
     const handleExecute = async () => {
@@ -190,6 +206,7 @@ export default function BattlePage() {
                 toast.info("Все задачи решены!", { description: "Ожидайте окончания турнира." })
                 localStorage.removeItem("isTournamentActive")
                 localStorage.setItem("allTasksCompleted", "true")
+                shouldRestartTimerRef.current = false
                 router.push("/lobby")
                 return
             }
@@ -216,7 +233,7 @@ export default function BattlePage() {
 
             if (taskId) {
                 try {
-                    console.log(`📤 Отправка таймаута для задачи ${taskId} с временем ${duration}с`)
+                    console.log(` Отправка таймаута для задачи ${taskId} с временем ${duration}с`)
                     await submitSolution(taskId, query, duration)
                     console.log(`✅ Зафиксирована попытка с истекшим временем (${duration} сек)`)
                 } catch (e) {
@@ -236,12 +253,14 @@ export default function BattlePage() {
                 console.log(" Полная информация:", fullTask)
                 setTask(fullTask)
                 setCurrentTaskId(fullTask.id)
-                resetTimer() // Это перезапустит интервал для новой задачи
+                // resetTimer() сам вызовет startTimerInterval(), не нужно дублировать
+                resetTimer()
                 toast.info("Время вышло! Переход к следующей задаче.", { duration: 3000 })
             } else {
                 toast.info("Время вышло! Все задачи завершены.", { description: "Ожидайте окончания турнира." })
                 localStorage.removeItem("isTournamentActive")
                 localStorage.setItem("allTasksCompleted", "true")
+                shouldRestartTimerRef.current = false
                 router.push("/lobby")
                 return
             }
@@ -249,10 +268,12 @@ export default function BattlePage() {
             console.error("Ошибка при переходе к следующей задаче:", error)
             toast.error("Ошибка при загрузке следующей задачи")
         } finally {
-            // 🔥 Снимаем блокировку и гарантированно перезапускаем таймер для следующей задачи
             isHandlingTimeoutRef.current = false
             setIsNextTaskLoading(false)
-            startTimerInterval()
+
+            // 🔥 НЕ вызываем startTimerInterval() здесь, потому что resetTimer() уже сделал это
+            // Только сбрасываем флаг для следующей задачи
+            shouldRestartTimerRef.current = true
         }
     }
 
@@ -286,7 +307,6 @@ export default function BattlePage() {
 
     return (
         <div className="h-[calc(100vh-80px)] flex flex-row gap-4 overflow-hidden">
-            {/* ЛЕВАЯ ПАНЕЛЬ - Условие и схема БД (на всю высоту) */}
             <div className="w-1/3 min-w-[350px] h-full flex flex-col">
                 <Card className="bg-zinc-900 border-zinc-800 flex-1 flex flex-col h-full min-h-0 transition-all duration-300 hover:border-zinc-700">
                     <CardHeader className="border-b border-zinc-800 pb-3 shrink-0">
@@ -324,9 +344,7 @@ export default function BattlePage() {
                 </Card>
             </div>
 
-            {/* ПРАВАЯ ЧАСТЬ - Редактор и результаты */}
             <div className="flex-1 flex flex-col gap-4 min-h-0">
-                {/* SQL Editor */}
                 <div className="flex-1 min-h-[300px] flex flex-col">
                     <div className="flex justify-between items-center mb-2 shrink-0">
                         <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
@@ -357,7 +375,6 @@ export default function BattlePage() {
                     </div>
                 </div>
 
-                {/* Результаты выполнения */}
                 <div className="h-[40%] min-h-[250px] bg-zinc-900 border border-zinc-800 rounded-lg flex flex-col transition-all duration-300 hover:border-zinc-700 overflow-hidden">
                     <div className="px-4 py-2 border-b border-zinc-800 bg-zinc-900/50 rounded-t-lg flex items-center gap-2 shrink-0">
                         <Database className="h-4 w-4 text-zinc-500" />
